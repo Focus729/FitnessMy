@@ -19,13 +19,15 @@ import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
 import { award } from '@/app/gamification';
 import type { Exercise, SetType, WorkoutSet } from '@/domain/model';
-import { epley1RM, personalRecords, totalVolume, countWorkingSets, rirFromRpe } from '@/domain/training/oneRm';
+import { personalRecords, rirFromRpe } from '@/domain/training/oneRm';
+import { recalcWorkoutTotals } from '@/domain/training/aggregates';
 import { prefillFromLast, suggestProgression } from '@/domain/training/progression';
 import { planPlates, summarizePlates } from '@/domain/training/plates';
 import { durationShort, num } from '@/lib/format';
-import { nowIso } from '@/lib/date';
-import { Button, NumberField, Segmented, Sheet } from '@/design-system/primitives';
+import { uuid } from '@/lib/id';
+import { Button, Segmented, Sheet } from '@/design-system/primitives';
 import { RestTimer } from '@/components/RestTimer';
+import { SetsTable } from '@/components/SetsTable';
 import { ExercisePickerSheet } from '@/components/ExercisePickerSheet';
 
 /** Стабильная пустая ссылка: не даёт зависимостям хуков меняться каждый рендер. */
@@ -45,12 +47,19 @@ export function ActiveWorkoutScreen() {
     [workoutId],
   );
   const exercises = useQueryWithDefault((r) => r.exercises.all(), EMPTY);
+  const routine = useQuery(
+    (r) => (workout?.routineId ? r.routines.get(workout.routineId) : Promise.resolve(undefined)),
+    [workout?.routineId],
+  );
 
   const [openExerciseId, setOpenExerciseId] = useState<string | null>(null);
   const [restSec, setRestSec] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [plateFor, setPlateFor] = useState<{ weightKg: number; barKg: number } | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
+  /** Упражнения, добавленные сверх программы прямо в зале (задача 4, пункт 2). */
+  const [addedOffPlan, setAddedOffPlan] = useState<string[]>([]);
+  const [offPlanOpen, setOffPlanOpen] = useState(false);
 
   const byId = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
   const order = useMemo(() => workout?.exerciseOrder ?? EMPTY, [workout?.exerciseOrder]);
@@ -65,18 +74,63 @@ export function ActiveWorkoutScreen() {
       exerciseOrder: [...order.filter((id) => id !== exercise.id), exercise.id],
     });
     setOpenExerciseId(exercise.id);
+    // Разовое добавление НЕ меняет программу: запоминаем и спросим при завершении.
+    if (workout.routineId && !plannedExerciseIds.includes(exercise.id)) {
+      setAddedOffPlan((cur) => (cur.includes(exercise.id) ? cur : [...cur, exercise.id]));
+    }
+  };
+
+  /** Упражнения, заложенные программой на этот день. */
+  const plannedExerciseIds = useMemo(() => {
+    const day = routine?.days.find((d) => d.id === workout?.routineDayId);
+    return (day?.items ?? []).map((i) => i.exerciseId);
+  }, [routine, workout?.routineDayId]);
+
+  /** Закрепить добавленные упражнения в программе — по явному согласию. */
+  const keepInRoutine = async () => {
+    if (!routine || !workout?.routineDayId) return;
+    await repos.routines.update(routine.id, {
+      days: routine.days.map((day) =>
+        day.id !== workout.routineDayId
+          ? day
+          : {
+              ...day,
+              items: [
+                ...day.items,
+                ...addedOffPlan.map((exerciseId, i) => ({
+                  id: uuid(),
+                  exerciseId,
+                  order: day.items.length + i,
+                  targetSets: 3,
+                  targetRepsMin: 6,
+                  targetRepsMax: 10,
+                  restSec: settings.restTimer.defaultSec,
+                })),
+              ],
+            },
+      ),
+    });
+    setOffPlanOpen(false);
+    navigate('/gym');
+  };
+
+  /** Отвязать тренировку от программы — дальше правится как свободная. */
+  const unlinkFromRoutine = async () => {
+    if (!workout) return;
+    await repos.workouts.updateWorkout(workout.id, {
+      routineId: undefined,
+      routineDayId: undefined,
+    });
   };
 
   const finish = async (feel?: 1 | 2 | 3 | 4 | 5) => {
     if (!workout) return;
-    await repos.workouts.update(workout.id, {
-      finishedAt: nowIso(),
-      totalVolumeKg: totalVolume(sets),
-      totalSets: countWorkingSets(sets),
-      ...(feel ? { feelRating: feel } : {}),
-    });
+    await repos.workouts.finishWorkout(workout.id, feel ? { feelRating: feel } : undefined);
     await award(repos, 'workoutFinished', workout.date, workout.id);
-    navigate('/gym');
+    // Если во время тренировки добавляли упражнения не из программы —
+    // предложим закрепить их в программе (задача 4, пункт 2).
+    if (workout.routineId && addedOffPlan.length > 0) setOffPlanOpen(true);
+    else navigate('/gym');
   };
 
   if (!workout) return null;
@@ -157,11 +211,17 @@ export function ActiveWorkoutScreen() {
         <Button variant="primary" full onClick={() => setFinishOpen(true)}>
           {t('gym.finishWorkout')}
         </Button>
+        {workout.routineId ? (
+          <Button variant="ghost" full onClick={() => void unlinkFromRoutine()}>
+            {t('gym.unlinkRoutine')}
+          </Button>
+        ) : null}
       </div>
 
       <ExercisePickerSheet
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
+        recentIds={order}
         onPick={(exercise) => {
           void addExercise(exercise);
           setPickerOpen(false);
@@ -174,11 +234,42 @@ export function ActiveWorkoutScreen() {
         onClose={() => setPlateFor(null)}
       />
 
+      <Sheet
+        open={offPlanOpen}
+        onClose={() => {
+          setOffPlanOpen(false);
+          navigate('/gym');
+        }}
+        title={t('gym.offPlanTitle')}
+      >
+        <p className="text-body text-muted">{t('gym.offPlanBody')}</p>
+        <ul className="mt-2 text-caption text-muted">
+          {addedOffPlan.map((id) => (
+            <li key={id}>{byId.get(id)?.name ?? id}</li>
+          ))}
+        </ul>
+        <div className="mt-4 flex flex-col gap-2">
+          <Button
+            variant="primary"
+            full
+            onClick={() => {
+              setOffPlanOpen(false);
+              navigate('/gym');
+            }}
+          >
+            {t('gym.offPlanOnce')}
+          </Button>
+          <Button full onClick={() => void keepInRoutine()}>
+            {t('gym.offPlanKeep')}
+          </Button>
+        </div>
+      </Sheet>
+
       <Sheet open={finishOpen} onClose={() => setFinishOpen(false)} title={t('gym.finishWorkout')}>
         <p className="tnum text-caption text-muted">
           {t('gym.finishSummary', {
-            sets: t('gym.sets', { count: countWorkingSets(sets) }),
-            volume: num(totalVolume(sets)),
+            sets: t('gym.sets', { count: recalcWorkoutTotals(sets).totalSets }),
+            volume: num(recalcWorkoutTotals(sets).totalVolumeKg),
             duration: durationShort(elapsedSec),
           })}
         </p>
@@ -282,10 +373,8 @@ function ExercisePanel({
   /** Отметка подхода: одно нажатие. Таймер отдыха стартует автоматически (C2-б). */
   const complete = async (set: WorkoutSet) => {
     const next = !set.isCompleted;
-    await repos.workoutSets.update(set.id, {
-      isCompleted: next,
-      estimated1RM: epley1RM(set.weightKg, set.reps),
-    });
+    // Агрегаты пересчитывает репозиторий — компонент их не считает (задача 1).
+    await repos.workouts.updateSet(set.id, { isCompleted: next });
     if (next) onRest(exercise.defaultRestSec ?? settings.restTimer.defaultSec);
   };
 
@@ -309,82 +398,15 @@ function ExercisePanel({
         </p>
       ) : null}
 
-      <table className="w-full text-caption">
-        <thead>
-          <tr className="text-label uppercase text-muted">
-            <th className="w-6 text-left">#</th>
-            <th className="text-left">{t('gym.previous')}</th>
-            <th className="w-20 text-left">{t('gym.weight')}</th>
-            <th className="w-16 text-left">{t('gym.reps')}</th>
-            <th className="w-14 text-left">{t('gym.rpe')}</th>
-            <th className="w-10" />
-          </tr>
-        </thead>
-        <tbody>
-          {sets.map((set, i) => {
-            const prev = lastSets.filter((s) => s.type !== 'warmup')[i];
-            return (
-              <tr key={set.id} className="align-middle">
-                <td className="tnum text-muted">{i + 1}</td>
-                <td className="tnum text-muted">
-                  {prev
-                    ? t('gym.prevFormat', { weight: num(prev.weightKg), reps: prev.reps })
-                    : t('gym.noPrevious')}
-                </td>
-                <td className="py-1 pr-1">
-                  <button
-                    type="button"
-                    className="w-full text-left"
-                    onClick={() => onPlates(set.weightKg)}
-                    aria-label={t('gym.plateTitle')}
-                  >
-                    <NumberField
-                      value={set.weightKg}
-                      onChange={(v) =>
-                        void repos.workoutSets.update(set.id, { weightKg: v === '' ? 0 : v })
-                      }
-                      aria-label={t('gym.weight')}
-                    />
-                  </button>
-                </td>
-                <td className="py-1 pr-1">
-                  <NumberField
-                    value={set.reps}
-                    onChange={(v) => void repos.workoutSets.update(set.id, { reps: v === '' ? 0 : v })}
-                    aria-label={t('gym.reps')}
-                  />
-                </td>
-                <td className="py-1 pr-1">
-                  <NumberField
-                    value={set.rpe ?? ''}
-                    onChange={(v) => void repos.workoutSets.update(set.id, { rpe: v === '' ? undefined : v })}
-                    aria-label={t('gym.rpe')}
-                  />
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    aria-label={t('common.done')}
-                    aria-pressed={set.isCompleted}
-                    onClick={() => void complete(set)}
-                    className={`tappable w-full justify-center rounded-lg border ${
-                      set.isCompleted ? 'border-accent text-accent' : 'border-hairline text-muted'
-                    }`}
-                  >
-                    <span aria-hidden="true">✓</span>
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button onClick={() => void addSet('normal')}>{t('gym.addSet')}</Button>
-        <Button onClick={() => void addSet('drop')}>{t('gym.addDrop')}</Button>
-        <Button onClick={() => void addSet('warmup')}>{t('gym.setTypes.warmup')}</Button>
-      </div>
+      <SetsTable
+        mode="active"
+        sets={sets}
+        lastSets={lastSets}
+        onChangeSet={(setId, patch) => void repos.workouts.updateSet(setId, patch)}
+        onToggleComplete={(set) => void complete(set)}
+        onAddSet={(type) => void addSet(type)}
+        onPlates={onPlates}
+      />
 
       {records.max1RM > 0 ? (
         <p className="tnum mt-2 text-caption text-muted">

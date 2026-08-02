@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation as useI18n } from 'react-i18next';
 
 /* ──────────────────────────────────── Button ───────────────────────────────── */
 
@@ -81,64 +82,8 @@ export function Row({
   );
 }
 
-/* ─────────────────────────────────── Sheet ─────────────────────────────────── */
-
-/** Выезжающая снизу панель. Все диалоги ввода — только так (18.5). */
-export function Sheet({
-  open,
-  onClose,
-  title,
-  children,
-  footer,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title?: ReactNode;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <div
-        className="absolute inset-0 bg-ink/30 animate-fadeIn"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="relative max-h-[92vh] overflow-y-auto rounded-t-2xl bg-surface shadow-sheet animate-sheetIn"
-      >
-        <div className="sticky top-0 z-10 bg-surface px-4 pb-2 pt-3">
-          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-hairline" />
-          {title ? <h2 className="text-section">{title}</h2> : null}
-        </div>
-        <div className="px-4 pb-4">{children}</div>
-        {footer ? (
-          <div className="sticky bottom-0 border-t border-hairline bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>,
-    document.body,
-  );
-}
+/* Sheet вынесен в отдельный файл — см. пояснение в design-system/Sheet.tsx. */
+export { Sheet, type SheetProps } from './Sheet';
 
 /* ───────────────────────────────── NumberField ─────────────────────────────── */
 
@@ -250,11 +195,17 @@ export function Segmented<T extends string | number>({
   onChange: (value: T) => void;
   ariaLabel?: string;
 }) {
+  // При пяти и более вариантах ряд не помещается в ширину телефона,
+  // поэтому он прокручивается, а кнопки перестают растягиваться.
+  const scrollable = options.length > 4;
+
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="flex gap-1 rounded-xl border border-hairline p-1"
+      className={`flex gap-1 rounded-xl border border-hairline p-1 ${
+        scrollable ? 'no-scrollbar overflow-x-auto' : ''
+      }`}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -265,9 +216,9 @@ export function Segmented<T extends string | number>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={`min-h-[36px] flex-1 rounded-lg px-2 text-caption font-semibold transition-colors ${
-              active ? 'bg-ink text-paper' : 'text-muted'
-            }`}
+            className={`min-h-[36px] rounded-lg px-2 text-caption font-semibold transition-colors ${
+              scrollable ? 'shrink-0 px-3' : 'flex-1'
+            } ${active ? 'bg-ink text-paper' : 'text-muted'}`}
           >
             {o.label}
           </button>
@@ -516,5 +467,156 @@ export function UndoToast({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/* ───────────────── Разделение разделов и показателей (задача 6 v0.7) ───────── */
+
+/**
+ * Заголовок смысловой группы. Разделение делается иерархией, а не раскраской:
+ * мелкая прописная метка плюс удвоенный отступ сверху — линия не нужна.
+ * `action` — необязательное действие справа (например, «Добавить»).
+ */
+export function SectionHeader({
+  title,
+  hint,
+  action,
+  className = '',
+}: {
+  title: ReactNode;
+  hint?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-baseline gap-3 pb-1 ${className}`}>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-label uppercase text-muted">{title}</h3>
+        {hint ? <p className="text-caption text-muted">{hint}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+/**
+ * Число с единицей и необязательной дельтой.
+ *
+ * Иерархия размеров по задаче 6: главная метрика экрана — `display`,
+ * вспомогательные — мельче и цветом muted. Единица всегда мельче числа и
+ * не жирная. Дельта передаётся И цветом, И стрелкой — состояние никогда
+ * не передаётся одним лишь цветом (19.3).
+ */
+export function MetricValue({
+  value,
+  unit,
+  size = 'md',
+  delta,
+  deltaGood,
+  label,
+  className = '',
+}: {
+  value: ReactNode;
+  unit?: ReactNode;
+  size?: 'display' | 'lg' | 'md' | 'sm';
+  /** Изменение к прошлому периоду. Знак определяет стрелку. */
+  delta?: number;
+  /** Куда «хорошо»: рост или снижение. По умолчанию рост. */
+  deltaGood?: 'up' | 'down';
+  label?: ReactNode;
+  className?: string;
+}) {
+  const sizes: Record<string, string> = {
+    display: 'text-[40px] leading-[44px] font-medium tracking-[-0.02em]',
+    lg: 'text-[24px] leading-[30px] font-medium',
+    md: 'text-num',
+    sm: 'text-caption',
+  };
+  const arrow = delta == null || delta === 0 ? null : delta > 0 ? '↑' : '↓';
+  const good = delta == null || delta === 0 ? null : (delta > 0) === ((deltaGood ?? 'up') === 'up');
+
+  return (
+    <div className={className}>
+      {label ? <div className="text-label uppercase text-muted">{label}</div> : null}
+      <div className="flex items-baseline gap-1.5">
+        <span className={`tnum ${sizes[size]}`}>{value}</span>
+        {unit ? <span className="text-caption font-normal text-muted">{unit}</span> : null}
+        {arrow ? (
+          <span className={`tnum text-caption ${good ? 'text-good' : 'text-over'}`}>
+            <span aria-hidden="true">{arrow}</span> {Math.abs(delta as number)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Разделитель. Использовать редко — только там, где отступа недостаточно. */
+export function Divider({ className = '' }: { className?: string }) {
+  return <hr className={`border-0 border-t border-hairline ${className}`} />;
+}
+
+/**
+ * Карточка группы: поверхность уровня 1 на фоне экрана (уровень 0).
+ * Разница — в оттенке фона, не в тенях и не в рамках.
+ */
+export function Panel({
+  title,
+  hint,
+  action,
+  children,
+  className = '',
+}: {
+  title?: ReactNode;
+  hint?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`rounded-2xl bg-surface-1 p-4 ${className}`}>
+      {title ? <SectionHeader title={title} hint={hint} action={action} /> : null}
+      {children}
+    </section>
+  );
+}
+
+/** Поле поиска с крестиком очистки (задача 5, пункт 6). */
+export function SearchField({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  ariaLabel?: string;
+  autoFocus?: boolean;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-hairline bg-surface pr-1">
+      <input
+        type="search"
+        className="min-h-touch w-full bg-transparent px-3 text-body outline-none [&::-webkit-search-cancel-button]:appearance-none"
+        value={value}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        autoFocus={autoFocus}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label={t('common.clear')}
+          onClick={() => onChange('')}
+          className="flex h-touch w-touch shrink-0 items-center justify-center text-muted"
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
+      ) : null}
+    </div>
   );
 }

@@ -8,7 +8,8 @@ import type { Repositories } from '@/data/repositories/types';
 import type { LocalDate } from '@/domain/model';
 import { dedupeKey, isXpEligible, xpFor, type XpReason } from '@/domain/gamification/xp';
 import { newlyUnlocked, type AchievementMetric } from '@/domain/gamification/achievements';
-import { nowIso } from '@/lib/date';
+import { quitStats } from '@/domain/habits/quit';
+import { nowIso, today } from '@/lib/date';
 
 export async function award(
   repos: Repositories,
@@ -26,6 +27,42 @@ export async function award(
     date,
     dedupeKey: dedupeKey(reason, date, ref),
   });
+}
+
+/**
+ * Вехи отказа от привычки (задача 3): 1, 3, 7… дней воздержания.
+ * Отмечаются в ленте достижений, только если геймификация включена.
+ * Ключ вида `quit:<habitId>:<веха>` — веха засчитывается один раз.
+ */
+export async function refreshQuitMilestones(repos: Repositories): Promise<string[]> {
+  const settings = await repos.settings.get();
+  if (!settings.gamificationEnabled) return [];
+
+  const [habits, state] = await Promise.all([repos.habits.all(), repos.game.get()]);
+  const quitHabits = habits.filter((h) => h.polarity === 'quit' && !h.archived);
+  if (quitHabits.length === 0) return [];
+
+  const unlocked = new Set(state.unlockedAchievements.map((a) => a.key));
+  const fresh: string[] = [];
+  const now = today();
+
+  for (const habit of quitHabits) {
+    const logs = await repos.habitLogs.byHabit(habit.id);
+    const stats = quitStats(logs, habit.quitStartDate ?? habit.createdAt.slice(0, 10), now);
+    for (const milestone of stats.reachedMilestones) {
+      const key = `quit:${habit.id}:${milestone}`;
+      if (!unlocked.has(key)) fresh.push(key);
+    }
+  }
+
+  if (fresh.length === 0) return [];
+  await repos.game.update({
+    unlockedAchievements: [
+      ...state.unlockedAchievements,
+      ...fresh.map((key) => ({ key, unlockedAt: nowIso() })),
+    ],
+  });
+  return fresh;
 }
 
 /** Пересчёт метрик достижений. Считается по требованию, не на каждое действие. */

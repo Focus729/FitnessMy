@@ -371,6 +371,45 @@ export interface Workout extends BaseRecord {
   exerciseOrder: string[];
 }
 
+export type PlannedStatus = 'planned' | 'started' | 'completed' | 'skipped';
+
+export interface PlannedItem {
+  id: string;
+  exerciseId: string;
+  order: number;
+  supersetGroup?: string;
+  targetSets: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetWeightKg?: number;
+  targetRpe?: number;
+  restSec: number;
+}
+
+/**
+ * Запланированная тренировка — намерение, а не факт.
+ *
+ * Отдельная сущность, а не поле `status` в `Workout`: у `Workout` подходы уже
+ * выполнены и содержат факт (вес, повторы, отметка), план же содержит цель
+ * (диапазон повторов). Смешивать их в одной таблице — источник багов в
+ * агрегатах и графиках, потому что планы начнут попадать в статистику.
+ *
+ * Служебные даты — ISO-строки, как у всех остальных таблиц: слияние резервных
+ * копий сравнивает `updatedAt` лексикографически, и число здесь сломало бы
+ * сравнение.
+ */
+export interface PlannedWorkout extends BaseRecord {
+  plannedDate: LocalDate;
+  routineId?: string;
+  routineDayId?: string;
+  name: string;
+  items: PlannedItem[];
+  notes?: string;
+  status: PlannedStatus;
+  /** Ссылка на созданную тренировку после старта. */
+  workoutId?: string;
+}
+
 export interface CardioSession extends BaseRecord {
   date: LocalDate;
   time: LocalTime;
@@ -429,6 +468,13 @@ export type HabitSchedule =
   | { type: 'timesPerWeek'; times: number }
   | { type: 'everyNDays'; n: number };
 
+/**
+ * `build` — привычку хотят выработать (существующее поведение).
+ * `quit` — от привычки хотят отказаться: важен непрерывный счётчик дней
+ * воздержания, а пропущенный день серию не рвёт (задача 3 v0.7).
+ */
+export type HabitPolarity = 'build' | 'quit';
+
 export interface Habit extends BaseRecord {
   name: string;
   icon: string;
@@ -437,6 +483,9 @@ export interface Habit extends BaseRecord {
   unit?: string;
   archived: boolean;
   order: number;
+  polarity: HabitPolarity;
+  /** Дата отказа, YYYY-MM-DD. Только для polarity === 'quit'. */
+  quitStartDate?: LocalDate;
 }
 
 export interface HabitLog extends BaseRecord {
@@ -445,6 +494,11 @@ export interface HabitLog extends BaseRecord {
   value?: number;
   completed: boolean;
   usedFreeze?: boolean;
+  /** Для привычек типа `quit`: день выдержан или был срыв. */
+  outcome?: 'success' | 'relapse';
+  relapseNote?: string;
+  /** Например, сколько сигарет. Опционально. */
+  relapseCount?: number;
 }
 
 export interface StreakState {

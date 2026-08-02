@@ -16,14 +16,26 @@ import type { CardioKind } from '@/domain/training/met';
 import { nowIso, today as todayFn, toLocalTime } from '@/lib/date';
 import { dateShort, durationLong, num } from '@/lib/format';
 import { uuid } from '@/lib/id';
-import { Button, NumberField, Segmented, Sheet, Label } from '@/design-system/primitives';
+import {
+  Button,
+  MetricValue,
+  NumberField,
+  Panel,
+  SectionHeader,
+  Segmented,
+  Sheet,
+  UndoToast,
+} from '@/design-system/primitives';
 import { ExercisePickerSheet } from '@/components/ExercisePickerSheet';
 import { ExerciseImages } from '@/components/ExerciseImages';
+import { PlanPanel } from '@/components/PlanPanel';
+import { RoutineEditorSheet } from '@/components/RoutineEditorSheet';
+import { SwipeToDelete } from '@/components/SwipeToDelete';
 
 /** Стабильная пустая ссылка: не даёт зависимостям хуков меняться каждый рендер. */
 const EMPTY: never[] = [];
 
-type Section = 'workouts' | 'routines' | 'exercises' | 'cardio';
+type Section = 'workouts' | 'plan' | 'routines' | 'exercises' | 'cardio';
 
 export function GymScreen() {
   const { t } = useTranslation();
@@ -36,6 +48,7 @@ export function GymScreen() {
         value={section}
         options={[
           { value: 'workouts' as const, label: t('gym.workouts') },
+          { value: 'plan' as const, label: t('gym.plan') },
           { value: 'routines' as const, label: t('gym.routines') },
           { value: 'exercises' as const, label: t('gym.exercises') },
           { value: 'cardio' as const, label: t('gym.cardio') },
@@ -43,6 +56,7 @@ export function GymScreen() {
         onChange={setSection}
       />
       {section === 'workouts' ? <Workouts /> : null}
+      {section === 'plan' ? <PlanPanel /> : null}
       {section === 'routines' ? <Routines /> : null}
       {section === 'exercises' ? <ExerciseLibrary /> : null}
       {section === 'cardio' ? <Cardio /> : null}
@@ -60,6 +74,7 @@ function Workouts() {
   const unfinished = useQuery((r) => r.workouts.unfinished());
   const routines = useQuery((r) => r.routines.all()) ?? [];
   const [startOpen, setStartOpen] = useState(false);
+  const [undoId, setUndoId] = useState<string | null>(null);
 
   const startEmpty = async () => {
     const workout = await repos.workouts.create({
@@ -93,8 +108,7 @@ function Workouts() {
   return (
     <div className="space-y-3">
       {unfinished ? (
-        <div className="card p-3">
-          <div className="text-section">{t('gym.unfinishedTitle')}</div>
+        <Panel title={t('gym.unfinishedTitle')}>
           <p className="text-caption text-muted">
             {t('gym.unfinishedBody', { date: dateShort(unfinished.date) })}
           </p>
@@ -106,7 +120,7 @@ function Workouts() {
               {t('gym.discard')}
             </Button>
           </div>
-        </div>
+        </Panel>
       ) : null}
 
       <div className="flex gap-2">
@@ -121,21 +135,49 @@ function Workouts() {
       {recent.length === 0 ? (
         <p className="py-6 text-body text-muted">{t('gym.noWorkouts')}</p>
       ) : (
-        <ul className="divide-y divide-hairline">
+        <ul className="space-y-1">
           {recent.map((w) => (
-            <li key={w.id} className="py-2">
-              <div className="flex items-baseline justify-between">
-                <span className="truncate text-body">{w.name}</span>
-                <span className="tnum text-caption text-muted">{dateShort(w.date)}</span>
-              </div>
-              <div className="tnum text-caption text-muted">
-                {t('gym.sets', { count: w.totalSets })} · {t('gym.volume')} {num(w.totalVolumeKg)}{' '}
-                {t('units.kg')}
-              </div>
+            <li key={w.id}>
+              {/* Удаление — только свайпом, подтверждения нет: есть отмена (18.5) */}
+              <SwipeToDelete
+                deleteLabel={t('gym.deleteWorkout')}
+                onDelete={() => {
+                  void repos.workouts.softDeleteWorkout(w.id);
+                  setUndoId(w.id);
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label={t('gym.openWorkout')}
+                  className="w-full rounded-xl px-1 py-2 text-left"
+                  onClick={() => navigate(`/workout/${w.id}/view`)}
+                >
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 flex-1 truncate text-body">{w.name}</span>
+                    <span className="tnum text-caption text-muted">{dateShort(w.date)}</span>
+                  </span>
+                  <span className="tnum block text-caption text-muted">
+                    {t('gym.sets', { count: w.totalSets })} · {t('gym.volume')}{' '}
+                    {num(w.totalVolumeKg)} {t('units.kg')}
+                  </span>
+                </button>
+              </SwipeToDelete>
             </li>
           ))}
         </ul>
       )}
+
+      {undoId ? (
+        <UndoToast
+          message={t('gym.workoutDeleted')}
+          actionLabel={t('common.undo')}
+          onAction={() => {
+            void repos.workouts.restoreWorkout(undoId);
+            setUndoId(null);
+          }}
+          onExpire={() => setUndoId(null)}
+        />
+      ) : null}
 
       <Sheet open={startOpen} onClose={() => setStartOpen(false)} title={t('gym.startFromRoutine')}>
         <ul className="divide-y divide-hairline">
@@ -168,6 +210,38 @@ function Routines() {
   const settings = useSettings();
   const routines = useQuery((r) => r.routines.all()) ?? [];
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [editing, setEditing] = useState<Routine | null>(null);
+  const [undoRoutine, setUndoRoutine] = useState<string | null>(null);
+  /** Снимок программы до сброса — чтобы правки можно было вернуть (задача 4.4). */
+  const [resetSnapshot, setResetSnapshot] = useState<Routine | null>(null);
+
+  /**
+   * Возврат состава к исходному шаблону. Шаблон живёт константой в коде и
+   * никогда не меняется, поэтому сброс всегда воспроизводим.
+   */
+  const resetToTemplate = async (routine: Routine) => {
+    const template = ROUTINE_TEMPLATES.find((x) => x.key === routine.templateKey);
+    if (!template) return;
+    setResetSnapshot(routine);
+    await repos.routines.update(routine.id, {
+      days: template.days.map((day, i) => ({
+        id: uuid(),
+        name: settings.locale === 'ru' ? day.nameRu : day.nameEn,
+        order: i,
+        items: day.items.map((item, k) => ({
+          id: uuid(),
+          exerciseId: item.exerciseId,
+          order: k,
+          targetSets: item.targetSets,
+          targetRepsMin: item.targetRepsMin,
+          targetRepsMax: item.targetRepsMax,
+          restSec: item.restSec,
+          ...(item.supersetGroup ? { supersetGroup: item.supersetGroup } : {}),
+        })),
+      })),
+    });
+    setEditing(null);
+  };
 
   const copyTemplate = async (key: string) => {
     const template = ROUTINE_TEMPLATES.find((x) => x.key === key);
@@ -206,23 +280,67 @@ function Routines() {
       <ul className="divide-y divide-hairline">
         {routines.map((routine) => (
           <li key={routine.id} className="flex items-center gap-3 py-2">
-            <span className="min-w-0 flex-1">
+            <button
+              type="button"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => setEditing(routine)}
+            >
               <span className="block truncate text-body">{routine.name}</span>
               <span className="block text-caption text-muted">
                 {routine.days.map((d) => d.name).join(' · ')}
               </span>
-            </span>
+            </button>
+            <Button variant="ghost" onClick={() => setEditing(routine)}>
+              {t('common.edit')}
+            </Button>
             <button
               type="button"
               aria-label={t('common.delete')}
               className="tappable justify-center px-2 text-muted"
-              onClick={() => void repos.routines.remove(routine.id)}
+              onClick={() => {
+                void repos.routines.remove(routine.id);
+                setUndoRoutine(routine.id);
+              }}
             >
               <span aria-hidden="true">×</span>
             </button>
           </li>
         ))}
       </ul>
+
+      <RoutineEditorSheet
+        open={editing != null}
+        routine={editing ?? undefined}
+        onClose={() => setEditing(null)}
+        onResetToTemplate={(routine) => void resetToTemplate(routine)}
+      />
+
+      {undoRoutine ? (
+        <UndoToast
+          message={t('common.deleted')}
+          actionLabel={t('common.undo')}
+          onAction={() => {
+            void repos.routines.restore(undoRoutine);
+            setUndoRoutine(null);
+          }}
+          onExpire={() => setUndoRoutine(null)}
+        />
+      ) : null}
+
+      {resetSnapshot ? (
+        <UndoToast
+          message={t('gym.routineReset')}
+          actionLabel={t('common.undo')}
+          onAction={() => {
+            void repos.routines.update(resetSnapshot.id, {
+              name: resetSnapshot.name,
+              days: resetSnapshot.days,
+            });
+            setResetSnapshot(null);
+          }}
+          onExpire={() => setResetSnapshot(null)}
+        />
+      ) : null}
 
       <Sheet
         open={templatesOpen}
@@ -301,16 +419,28 @@ function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: ()
       </div>
 
       {records.max1RM > 0 ? (
-        <dl className="tnum mt-4 space-y-1 text-caption">
-          <Line label={t('gym.recordWeight')} value={`${num(records.maxWeightKg)} ${t('units.kg')}`} />
-          <Line label={t('gym.recordReps')} value={String(records.maxReps)} />
-          <Line label={t('gym.record1Rm')} value={`${num(records.max1RM)} ${t('units.kg')}`} />
-        </dl>
+        <Panel title={t('gym.records')} className="mt-4">
+          <div className="grid grid-cols-3 gap-3">
+            <MetricValue
+              label={t('gym.recordWeight')}
+              value={num(records.maxWeightKg)}
+              unit={t('units.kg')}
+              size="lg"
+            />
+            <MetricValue label={t('gym.recordReps')} value={records.maxReps} size="lg" />
+            <MetricValue
+              label={t('gym.record1Rm')}
+              value={num(records.max1RM)}
+              unit={t('units.kg')}
+              size="lg"
+            />
+          </div>
+        </Panel>
       ) : null}
 
       {exercise.instructions.length > 0 ? (
         <div className="mt-4">
-          <Label>{t('gym.instructions')}</Label>
+          <SectionHeader title={t('gym.instructions')} />
           <ol className="mt-1 list-decimal space-y-1 pl-4 text-caption text-muted">
             {exercise.instructions.map((step, i) => (
               <li key={i}>{step}</li>
@@ -321,7 +451,7 @@ function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: ()
 
       {sets.length > 0 ? (
         <div className="mt-4">
-          <Label>{t('common.history')}</Label>
+          <SectionHeader title={t('common.history')} />
           <ul className="tnum mt-1 divide-y divide-hairline text-caption">
             {sets.slice(0, 30).map((s) => (
               <li key={s.id} className="flex justify-between py-1">
@@ -337,15 +467,6 @@ function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: ()
         </div>
       ) : null}
     </Sheet>
-  );
-}
-
-function Line({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between">
-      <dt className="text-muted">{label}</dt>
-      <dd>{value}</dd>
-    </div>
   );
 }
 
@@ -448,13 +569,13 @@ function Cardio() {
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div>
-            <Label>{t('gym.duration')}</Label>
+            <SectionHeader title={t('gym.duration')} />
             <div className="mt-1">
               <NumberField value={minutes} onChange={setMinutes} suffix={t('units.min')} aria-label={t('gym.duration')} />
             </div>
           </div>
           <div>
-            <Label>{t('gym.distance')}</Label>
+            <SectionHeader title={t('gym.distance')} />
             <div className="mt-1">
               <NumberField
                 value={distanceKm}
@@ -465,13 +586,13 @@ function Cardio() {
             </div>
           </div>
           <div>
-            <Label>{t('gym.avgHr')}</Label>
+            <SectionHeader title={t('gym.avgHr')} />
             <div className="mt-1">
               <NumberField value={hr} onChange={setHr} aria-label={t('gym.avgHr')} />
             </div>
           </div>
           <div>
-            <Label>{t('gym.kcalEstimate')}</Label>
+            <SectionHeader title={t('gym.kcalEstimate')} />
             <div className="tnum mt-1 text-num">
               {num(kcal)} {t('units.kcal')}
             </div>

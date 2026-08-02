@@ -21,6 +21,7 @@ import type {
   HabitLog,
   LocalDate,
   MealPlan,
+  PlannedWorkout,
   Profile,
   Recipe,
   Routine,
@@ -82,6 +83,34 @@ export interface WorkoutRepo extends CrudRepo<Workout> {
   /** Незавершённая тренировка — предлагается продолжить (10.1). */
   unfinished(): Promise<Workout | undefined>;
   recent(limit: number): Promise<Workout[]>;
+
+  /* ── Правка завершённой тренировки (задача 1 v0.7) ──────────────────────
+     Все методы ниже пересчитывают агрегаты `totalVolumeKg` и `totalSets`
+     через domain/training/aggregates. Компонент их не считает. */
+
+  updateWorkout(id: string, patch: Partial<Workout>): Promise<void>;
+  updateSet(setId: string, patch: Partial<WorkoutSet>): Promise<void>;
+  addSetToWorkout(workoutId: string, set: NewRecord<WorkoutSet>): Promise<string>;
+  removeSet(setId: string): Promise<void>;
+  /** Мягкое удаление с пересчётом связанного плана. */
+  softDeleteWorkout(id: string): Promise<void>;
+  restoreWorkout(id: string): Promise<void>;
+  /** Завершение тренировки: проставляет finishedAt и считает агрегаты. */
+  finishWorkout(id: string, patch?: { feelRating?: 1 | 2 | 3 | 4 | 5; notes?: string }): Promise<void>;
+  /** Пересчёт агрегатов по текущим подходам. */
+  recalcTotals(workoutId: string): Promise<void>;
+}
+
+export interface PlannedWorkoutRepo extends CrudRepo<PlannedWorkout> {
+  byDate(date: LocalDate): Promise<PlannedWorkout[]>;
+  byDateRange(from: LocalDate, to: LocalDate): Promise<PlannedWorkout[]>;
+  /** Ближайший незапущенный план — источник строки «Ближайшее» (13). */
+  upcoming(today: LocalDate): Promise<PlannedWorkout | undefined>;
+  /** Просроченные: дата прошла, тренировка не начата. Не удаляются. */
+  overdue(today: LocalDate): Promise<PlannedWorkout[]>;
+  /** Массовый перенос с опциональным сдвигом последующих. */
+  reschedule(id: string, newDate: LocalDate, shiftFollowing: boolean): Promise<void>;
+  setStatus(id: string, status: PlannedWorkout['status'], workoutId?: string): Promise<void>;
 }
 
 export interface WorkoutSetRepo extends CrudRepo<WorkoutSet> {
@@ -171,6 +200,7 @@ export interface Repositories {
   routines: CrudRepo<Routine>;
   workouts: WorkoutRepo;
   workoutSets: WorkoutSetRepo;
+  plannedWorkouts: PlannedWorkoutRepo;
   cardio: CrudRepo<CardioSession> & {
     byDateRange(from: LocalDate, to: LocalDate): Promise<CardioSession[]>;
   };

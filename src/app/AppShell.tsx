@@ -12,16 +12,27 @@ import { useSession } from './store';
 import { applyUpdate, registerServiceWorker } from './sw';
 import { BackupReminder } from '@/components/BackupReminder';
 import { Button } from '@/design-system/primitives';
+import { SectionIcon, type SectionIconName } from '@/design-system/icons';
 import { recomputeStreaks } from './streaks';
-import { refreshAchievements } from './gamification';
+import { refreshAchievements, refreshQuitMilestones } from './gamification';
 
 const TABS = [
-  { to: '/', key: 'nav.today', icon: '◐' },
-  { to: '/food', key: 'nav.food', icon: '◍' },
-  { to: '/gym', key: 'nav.gym', icon: '◼' },
-  { to: '/body', key: 'nav.body', icon: '◇' },
-  { to: '/progress', key: 'nav.progress', icon: '◈' },
+  { to: '/', key: 'nav.today', icon: 'today' },
+  { to: '/food', key: 'nav.food', icon: 'food' },
+  { to: '/gym', key: 'nav.gym', icon: 'gym' },
+  { to: '/body', key: 'nav.body', icon: 'body' },
+  { to: '/progress', key: 'nav.progress', icon: 'progress' },
 ] as const;
+
+/** Иконка раздела в шапке — по текущему маршруту (задача 6, пункт 1). */
+const HEADER_ICONS: Record<string, SectionIconName> = {
+  '/': 'today',
+  '/food': 'food',
+  '/gym': 'gym',
+  '/body': 'body',
+  '/progress': 'progress',
+  '/settings': 'settings',
+};
 
 export function AppShell({ seeded }: { seeded: boolean }) {
   const { t } = useTranslation();
@@ -43,7 +54,9 @@ export function AppShell({ seeded }: { seeded: boolean }) {
   useEffect(() => {
     if (!seeded) return;
     const refresh = () => {
-      void recomputeStreaks(repos).then(() => refreshAchievements(repos));
+      void recomputeStreaks(repos)
+        .then(() => refreshAchievements(repos))
+        .then(() => refreshQuitMilestones(repos));
     };
     refresh();
     document.addEventListener('visibilitychange', refresh);
@@ -61,9 +74,10 @@ export function AppShell({ seeded }: { seeded: boolean }) {
         </div>
       ) : null}
 
-      <header className="flex items-center justify-between px-4 pb-1 pt-3">
+      <header className="flex items-center gap-2 px-4 pb-1 pt-3">
+        <SectionIcon name={HEADER_ICONS[location.pathname] ?? 'today'} active />
         {/* Имя профиля всегда видно — раздел 23 */}
-        <span className="text-label uppercase text-muted">{profileName}</span>
+        <span className="flex-1 text-label uppercase text-muted">{profileName}</span>
         {isToday ? (
           <button
             type="button"
@@ -71,7 +85,7 @@ export function AppShell({ seeded }: { seeded: boolean }) {
             className="tappable justify-center text-muted"
             onClick={() => navigate('/settings')}
           >
-            <span aria-hidden="true">⚙</span>
+            <SectionIcon name="settings" />
           </button>
         ) : null}
       </header>
@@ -112,10 +126,12 @@ export function AppShell({ seeded }: { seeded: boolean }) {
                   }`
                 }
               >
-                <span aria-hidden="true" className="text-[15px]">
-                  {tab.icon}
-                </span>
-                {t(tab.key)}
+                {({ isActive }) => (
+                  <>
+                    <SectionIcon name={tab.icon} active={isActive} />
+                    <span>{t(tab.key)}</span>
+                  </>
+                )}
               </NavLink>
             </li>
           ))}

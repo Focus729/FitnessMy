@@ -23,6 +23,9 @@ const GymScreen = lazy(() => import('@/screens/Gym').then((m) => ({ default: m.G
 const ActiveWorkoutScreen = lazy(() =>
   import('@/screens/ActiveWorkout').then((m) => ({ default: m.ActiveWorkoutScreen })),
 );
+const WorkoutDetailScreen = lazy(() =>
+  import('@/screens/WorkoutDetail').then((m) => ({ default: m.WorkoutDetailScreen })),
+);
 const BodyScreen = lazy(() => import('@/screens/Body').then((m) => ({ default: m.BodyScreen })));
 const ProgressScreen = lazy(() =>
   import('@/screens/Progress').then((m) => ({ default: m.ProgressScreen })),
@@ -84,6 +87,7 @@ function ProfileScope({ profileId }: { profileId: string }) {
       <Suspense fallback={<ScreenFallback />}>
         <Routes>
           <Route path="/workout/:workoutId" element={<ActiveWorkoutScreen />} />
+          <Route path="/workout/:workoutId/view" element={<WorkoutDetailScreen />} />
           <Route element={<AppShell seeded={seeded} />}>
             <Route path="/" element={<TodayScreen />} />
             <Route path="/food" element={<FoodScreen />} />

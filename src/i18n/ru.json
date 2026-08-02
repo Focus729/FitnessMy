@@ -55,7 +55,8 @@
     "empty": "Пока пусто",
     "offline": "Нет сети",
     "days": "дней",
-    "daysWithData": "дней с данными"
+    "daysWithData": "дней с данными",
+    "clear": "Очистить"
   },
   "units": {
     "kcal": "ккал",
@@ -189,7 +190,9 @@
     "secondary": "Ещё показатели",
     "ribbonLabel": "Лента дня: события с 00:00 до 24:00",
     "eatingWindow": "Окно питания {{from}}–{{to}}",
-    "fastingFor": "Голодание {{hours}} ч"
+    "fastingFor": "Голодание {{hours}} ч",
+    "macros": "Макросы",
+    "wellbeing": "Самочувствие"
   },
   "food": {
     "title": "Еда",
@@ -417,7 +420,58 @@
     "kcalEstimate": "Расход (оценка)",
     "pace": "Темп {{value}} мин/км",
     "noWorkouts": "Тренировок пока нет",
-    "calendar": "Календарь"
+    "calendar": "Календарь",
+    "pickerGroups": {
+      "favorites": "Избранное",
+      "recent": "Недавние",
+      "all": "Все упражнения",
+      "results": "Результаты"
+    },
+    "setType": "Тип",
+    "removeSet": "Удалить подход",
+    "editMeta": "Название, дата, заметка",
+    "openWorkout": "Открыть тренировку",
+    "deleteWorkout": "Удалить тренировку",
+    "workoutDeleted": "Тренировка удалена",
+    "swipeToDelete": "Смахните карточку влево, чтобы удалить",
+    "unlinkRoutine": "Отвязать от программы",
+    "offPlanTitle": "Добавляли упражнения сверх программы",
+    "offPlanBody": "Оставить их только в этой тренировке или закрепить в программе навсегда?",
+    "offPlanOnce": "Только сегодня",
+    "offPlanKeep": "Добавить в программу",
+    "routineEdit": "Редактировать программу",
+    "routineAddDay": "Добавить день",
+    "routineRemoveDay": "Удалить день",
+    "routineResetTemplate": "Вернуть как в шаблоне",
+    "routineReset": "Программа возвращена к шаблону",
+    "routineResetHint": "Правки будут потеряны. Вернуть их можно плашкой отмены.",
+    "moveUp": "Выше",
+    "moveDown": "Ниже",
+    "supersetToggle": "Суперсет с предыдущим",
+    "plan": "План",
+    "planNew": "Запланировать",
+    "planDate": "Дата",
+    "planFree": "Свободная тренировка",
+    "planFromRoutine": "Из программы",
+    "planBulk": "Запланировать на несколько недель",
+    "planWeeks": "Недель вперёд",
+    "planWeekdays": "Дни недели",
+    "planCreated": "Запланировано тренировок: {{count}}",
+    "planOverdue": "Просроченные",
+    "planMoveToday": "Перенести на сегодня",
+    "planSkip": "Пропустить",
+    "planReschedule": "Перенести",
+    "planShiftFollowing": "Сдвинуть последующие тренировки",
+    "planStart": "Начать",
+    "planEmpty": "На этот день ничего не запланировано",
+    "planStatus": {
+      "planned": "Запланирована",
+      "started": "Начата",
+      "completed": "Выполнена",
+      "skipped": "Пропущена"
+    },
+    "targetWeight": "Целевой вес",
+    "planDeleted": "План удалён"
   },
   "body": {
     "title": "Тело",
@@ -489,7 +543,24 @@
       "5": "пт",
       "6": "сб",
       "7": "вс"
-    }
+    },
+    "polarity": "Что делаем",
+    "polarityBuild": "Хочу делать",
+    "polarityQuit": "Хочу бросить",
+    "quitLabel": "Отказ",
+    "quitStartDate": "Дата отказа",
+    "markDay": "Отметить день",
+    "markedToday": "Сегодня отмечено",
+    "relapse": "Был срыв",
+    "relapseConfirm": "Отметить срыв",
+    "relapseHint": "Серия начнётся заново. Лучший результат и общее число дней сохранятся.",
+    "relapseCount": "срывов: {{count}}",
+    "afterRelapse": "Серия начата заново. Лучший результат: {{best}} дней",
+    "nextMilestone": "До вехи {{milestone}} дней осталось {{days}}",
+    "daysUnit_one": "день",
+    "daysUnit_few": "дня",
+    "daysUnit_many": "дней",
+    "quitExplain": "Пропущенный день серию не обнуляет: она сбрасывается только отметкой срыва."
   },
   "game": {
     "title": "Прогресс",
@@ -768,5 +839,11 @@
     "smith": "Смит",
     "ezBar": "EZ-гриф",
     "other": "Другое"
+  },
+  "sheet": {
+    "unsavedTitle": "Введённое не сохранено",
+    "save": "Сохранить",
+    "discard": "Не сохранять",
+    "keepEditing": "Продолжить ввод"
   }
 }

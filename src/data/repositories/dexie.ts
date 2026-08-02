@@ -24,6 +24,7 @@ import type {
   HabitLog,
   LocalDate,
   MealPlan,
+  PlannedWorkout,
   Profile,
   Recipe,
   Routine,
@@ -49,6 +50,7 @@ import type {
   HabitLogRepo,
   MetaRepo,
   NewRecord,
+  PlannedWorkoutRepo,
   ProfileRepo,
   Repositories,
   SettingsRepo,
@@ -57,6 +59,9 @@ import type {
   WorkoutSetRepo,
 } from './types';
 import { levelForXp } from '@/domain/gamification/xp';
+import { recalcWorkoutTotals } from '@/domain/training/aggregates';
+import { epley1RM } from '@/domain/training/oneRm';
+import { overduePlans, reschedule as reschedulePlans, upcomingPlan } from '@/domain/training/planning';
 
 interface HasBase {
   id: string;
@@ -228,6 +233,18 @@ function makeWaterRepo(db: LentaDB): WaterRepo {
 
 function makeWorkoutRepo(db: LentaDB): WorkoutRepo {
   const base = crud<Workout>(db.workouts);
+
+  /** Пересчёт агрегатов по фактическим подходам. Формула — в domain. */
+  const recalcTotals = async (workoutId: string) => {
+    const sets = (await db.workoutSets.where('workoutId').equals(workoutId).toArray()).filter(
+      (s) => !s.deletedAt,
+    );
+    await db.workouts.update(workoutId, {
+      ...recalcWorkoutTotals(sets),
+      updatedAt: nowIso(),
+    });
+  };
+
   return {
     ...base,
     async byDate(date) {
@@ -250,6 +267,126 @@ function makeWorkoutRepo(db: LentaDB): WorkoutRepo {
         .filter((w) => w.finishedAt)
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
         .slice(0, limit);
+    },
+
+    recalcTotals,
+
+    async updateWorkout(id, patch) {
+      await base.update(id, patch);
+      // Дата могла измениться — нигде она не кэшируется отдельно от записи,
+      // поэтому история и графики подхватят новое значение сами.
+      await recalcTotals(id);
+    },
+
+    async updateSet(setId, patch) {
+      const current = await db.workoutSets.get(setId);
+      if (!current) return;
+      const next = { ...current, ...patch };
+      await db.workoutSets.update(setId, {
+        ...patch,
+        estimated1RM: epley1RM(next.weightKg, next.reps),
+        updatedAt: nowIso(),
+      });
+      await recalcTotals(current.workoutId);
+    },
+
+    async addSetToWorkout(workoutId, set) {
+      const ts = nowIso();
+      const record: WorkoutSet = {
+        ...(set as object),
+        workoutId,
+        id: set.id ?? uuid(),
+        estimated1RM: epley1RM(set.weightKg, set.reps),
+        createdAt: ts,
+        updatedAt: ts,
+      } as WorkoutSet;
+      await db.workoutSets.put(record);
+      await recalcTotals(workoutId);
+      return record.id;
+    },
+
+    async removeSet(setId) {
+      const current = await db.workoutSets.get(setId);
+      if (!current) return;
+      const ts = nowIso();
+      await db.workoutSets.update(setId, { deletedAt: ts, updatedAt: ts });
+      await recalcTotals(current.workoutId);
+    },
+
+    async softDeleteWorkout(id) {
+      await base.remove(id);
+      // План, который вёл к этой тренировке, возвращается в состояние «запланирован».
+      const plans = await db.plannedWorkouts.where('routineId').notEqual('').toArray();
+      const linked = plans.find((p) => p.workoutId === id && !p.deletedAt);
+      if (linked) {
+        await db.plannedWorkouts.update(linked.id, {
+          status: 'planned',
+          workoutId: undefined,
+          updatedAt: nowIso(),
+        });
+      }
+    },
+
+    async restoreWorkout(id) {
+      await base.restore(id);
+    },
+
+    async finishWorkout(id, patch) {
+      const sets = (await db.workoutSets.where('workoutId').equals(id).toArray()).filter(
+        (s) => !s.deletedAt,
+      );
+      await db.workouts.update(id, {
+        finishedAt: nowIso(),
+        ...recalcWorkoutTotals(sets),
+        ...(patch?.feelRating ? { feelRating: patch.feelRating } : {}),
+        ...(patch?.notes != null ? { notes: patch.notes } : {}),
+        updatedAt: nowIso(),
+      });
+      // Связанный план переходит в «выполнен».
+      const plans = (await db.plannedWorkouts.toArray()).filter((p) => !p.deletedAt);
+      const linked = plans.find((p) => p.workoutId === id);
+      if (linked) {
+        await db.plannedWorkouts.update(linked.id, { status: 'completed', updatedAt: nowIso() });
+      }
+    },
+  };
+}
+
+function makePlannedWorkoutRepo(db: LentaDB): PlannedWorkoutRepo {
+  const base = crud<PlannedWorkout>(db.plannedWorkouts);
+  return {
+    ...base,
+    async byDate(date) {
+      return (await db.plannedWorkouts.where('plannedDate').equals(date).toArray()).filter(
+        (p) => !p.deletedAt,
+      );
+    },
+    async byDateRange(from, to) {
+      return (
+        await db.plannedWorkouts.where('plannedDate').between(from, to, true, true).toArray()
+      ).filter((p) => !p.deletedAt);
+    },
+    async upcoming(today) {
+      return upcomingPlan(await base.all(), today);
+    },
+    async overdue(today) {
+      return overduePlans(await base.all(), today);
+    },
+    async reschedule(id, newDate, shiftFollowing) {
+      const plans = await base.all();
+      const next = reschedulePlans(plans, id, newDate, shiftFollowing);
+      const ts = nowIso();
+      const changed = next.filter((p, i) => p.plannedDate !== plans[i]?.plannedDate);
+      if (changed.length) {
+        await db.plannedWorkouts.bulkPut(changed.map((p) => ({ ...p, updatedAt: ts })));
+      }
+    },
+    async setStatus(id, status, workoutId) {
+      await db.plannedWorkouts.update(id, {
+        status,
+        ...(workoutId !== undefined ? { workoutId } : {}),
+        updatedAt: nowIso(),
+      });
     },
   };
 }
@@ -276,7 +413,10 @@ function makeWorkoutSetRepo(db: LentaDB): WorkoutSetRepo {
       );
       if (rows.length === 0) return [];
       const workoutIds = [...new Set(rows.map((r) => r.workoutId))];
-      const workouts = (await db.workouts.bulkGet(workoutIds)).filter(Boolean) as Workout[];
+      // Удалённые тренировки не должны подставляться как «прошлый раз».
+      const workouts = (await db.workouts.bulkGet(workoutIds)).filter(
+        (w): w is Workout => w != null && !w.deletedAt,
+      );
       const latest = workouts
         .filter((w) => w.finishedAt)
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
@@ -292,8 +432,8 @@ function makeWorkoutSetRepo(db: LentaDB): WorkoutSetRepo {
         byWorkout.set(r.workoutId, Math.max(byWorkout.get(r.workoutId) ?? 0, r.weightKg));
       }
       const workouts = (await db.workouts.bulkGet([...byWorkout.keys()])).filter(
-        Boolean,
-      ) as Workout[];
+        (w): w is Workout => w != null && !w.deletedAt,
+      );
       return workouts
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
         .slice(0, sessions)
@@ -582,6 +722,7 @@ export function createRepositories(profileId: string): Repositories {
     routines: crud<Routine>(db.routines),
     workouts: makeWorkoutRepo(db),
     workoutSets: makeWorkoutSetRepo(db),
+    plannedWorkouts: makePlannedWorkoutRepo(db),
     cardio: {
       ...crud<CardioSession>(db.cardio),
       async byDateRange(from, to) {

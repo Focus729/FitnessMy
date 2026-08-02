@@ -9,13 +9,23 @@ import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
 import { award } from '@/app/gamification';
 import { recomputeStreaks } from '@/app/streaks';
-import type { Habit, HabitSchedule, MeasurementKey } from '@/domain/model';
-import { movingAverage } from '@/domain/stats/movingAverage';
+import type { Habit, HabitPolarity, HabitSchedule, MeasurementKey } from '@/domain/model';
+import { movingAverage, trendChange } from '@/domain/stats/movingAverage';
 import { canEditRetroactively, isHabitDone, isScheduledOn } from '@/domain/habits/schedule';
 import { addDays, diffDays, lastNDays, sleepDurationMin, today as todayFn } from '@/lib/date';
-import { dateShort } from '@/lib/format';
-import { Button, NumberField, Segmented, Sheet, TextField, Label } from '@/design-system/primitives';
+import { dateShort, num } from '@/lib/format';
+import {
+  Button,
+  MetricValue,
+  NumberField,
+  Panel,
+  SectionHeader,
+  Segmented,
+  Sheet,
+  TextField,
+} from '@/design-system/primitives';
 import { WeightChart } from '@/components/charts/WeightChart';
+import { QuitHabitCard } from '@/components/QuitHabitCard';
 
 /** Стабильная пустая ссылка: не даёт зависимостям хуков меняться каждый рендер. */
 const EMPTY: never[] = [];
@@ -88,6 +98,8 @@ function WeightSection() {
   };
 
   const stale = lastMeasureDate == null || diffDays(date, lastMeasureDate) > 30;
+  const latestTrend = [...series].reverse().find((p) => p.trend != null)?.trend ?? null;
+  const trendDelta = trendChange(series);
 
   return (
     <div className="space-y-4">
@@ -105,8 +117,17 @@ function WeightSection() {
         </Button>
       </div>
 
-      <WeightChart series={series} />
-      <p className="text-caption text-muted">{t('body.weightNoise')}</p>
+      <Panel title={t('body.trend')}>
+        <MetricValue
+          value={latestTrend != null ? num(latestTrend, 1) : '—'}
+          unit={t('units.kg')}
+          size="display"
+          delta={trendDelta ?? undefined}
+          deltaGood="down"
+        />
+        <WeightChart series={series} />
+        <p className="text-caption text-muted">{t('body.weightNoise')}</p>
+      </Panel>
 
       {stale ? <p className="text-caption text-muted">{t('body.measurementsStale')}</p> : null}
 
@@ -151,7 +172,7 @@ function MeasurementsSheet({ open, onClose }: { open: boolean; onClose: () => vo
       <div className="grid grid-cols-2 gap-2">
         {MEASURES.map((key) => (
           <div key={key}>
-            <Label>{t(`body.measure.${key}`)}</Label>
+            <SectionHeader title={t(`body.measure.${key}`)} />
             <div className="mt-1">
               <NumberField
                 value={values[key] ?? record?.measurements?.[key] ?? ''}
@@ -192,7 +213,7 @@ function SleepSection() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label>{t('body.bedAt')}</Label>
+          <SectionHeader title={t('body.bedAt')} />
           <input
             type="time"
             value={bedAt}
@@ -202,7 +223,7 @@ function SleepSection() {
           />
         </div>
         <div>
-          <Label>{t('body.wakeAt')}</Label>
+          <SectionHeader title={t('body.wakeAt')} />
           <input
             type="time"
             value={wakeAt}
@@ -221,7 +242,7 @@ function SleepSection() {
       </div>
 
       <div>
-        <Label>{t('body.sleepQuality')}</Label>
+        <SectionHeader title={t('body.sleepQuality')} />
         <div className="mt-1">
           <Segmented
             ariaLabel={t('body.sleepQuality')}
@@ -297,7 +318,7 @@ function CheckinSection() {
 
       {settings.showSteps ? (
         <div>
-          <Label>{t('body.steps')}</Label>
+          <SectionHeader title={t('body.steps')} />
           <div className="mt-1">
             <NumberField value={steps} onChange={setSteps} aria-label={t('body.steps')} />
           </div>
@@ -325,7 +346,7 @@ function Scale({
 }) {
   return (
     <div>
-      <Label>{label}</Label>
+      <SectionHeader title={label} />
       <div className="mt-1">
         <Segmented
           ariaLabel={label}
@@ -352,6 +373,8 @@ function HabitsSection() {
   const [editorOpen, setEditorOpen] = useState(false);
 
   const active = habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order);
+  const buildHabits = active.filter((h) => h.polarity !== 'quit');
+  const quitHabits = active.filter((h) => h.polarity === 'quit');
   const week = lastNDays(7, date);
 
   const toggle = async (habit: Habit, day: string) => {
@@ -363,18 +386,36 @@ function HabitsSection() {
 
   return (
     <div className="space-y-4">
-      {game ? (
-        <div className="tnum text-caption text-muted">
-          {t('habits.streak', { count: game.streaks.habits?.current ?? 0 })} ·{' '}
-          {t('habits.bestStreak', { count: game.streaks.habits?.best ?? 0 })} ·{' '}
-          {t('habits.freezes', { count: game.freezes })}
+      {/* Серии и заморозки относятся только к привычкам «хочу делать»:
+          для отказов пропуск дня ничего не рвёт, покрывать нечего (задача 3). */}
+      {game && buildHabits.length > 0 ? (
+        <>
+          <div className="tnum text-caption text-muted">
+            {t('habits.streak', { count: game.streaks.habits?.current ?? 0 })} ·{' '}
+            {t('habits.bestStreak', { count: game.streaks.habits?.best ?? 0 })} ·{' '}
+            {t('habits.freezes', { count: game.freezes })}
+          </div>
+          <p className="text-caption text-muted">{t('habits.freezeExplain')}</p>
+        </>
+      ) : null}
+
+      {quitHabits.length > 0 ? (
+        <div className="space-y-3">
+          {quitHabits.map((habit) => (
+            <QuitHabitCard
+              key={habit.id}
+              habit={habit}
+              logs={logs.filter((l) => l.habitId === habit.id)}
+              onRelapse={() => void recomputeStreaks(repos)}
+            />
+          ))}
+          <p className="text-caption text-muted">{t('habits.quitExplain')}</p>
         </div>
       ) : null}
-      <p className="text-caption text-muted">{t('habits.freezeExplain')}</p>
 
       {active.length === 0 ? (
         <p className="py-6 text-body text-muted">{t('habits.empty')}</p>
-      ) : (
+      ) : buildHabits.length === 0 ? null : (
         <table className="w-full text-caption">
           <thead>
             <tr className="text-muted">
@@ -387,7 +428,7 @@ function HabitsSection() {
             </tr>
           </thead>
           <tbody>
-            {active.map((habit) => (
+            {buildHabits.map((habit) => (
               <tr key={habit.id}>
                 <td className="truncate py-1 pr-2 text-body">
                   {habit.icon} {habit.name}
@@ -424,7 +465,9 @@ function HabitsSection() {
         </table>
       )}
 
-      <p className="text-caption text-muted">{t('habits.retroHint')}</p>
+      {buildHabits.length > 0 ? (
+        <p className="text-caption text-muted">{t('habits.retroHint')}</p>
+      ) : null}
 
       <Button full onClick={() => setEditorOpen(true)}>
         {t('habits.new')}
@@ -454,6 +497,8 @@ function HabitEditorSheet({
   const repos = useRepos();
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('●');
+  const [polarity, setPolarity] = useState<HabitPolarity>('build');
+  const [quitStartDate, setQuitStartDate] = useState(todayFn());
   const [type, setType] = useState<HabitSchedule['type']>('daily');
   const [times, setTimes] = useState<number | ''>(3);
   const [everyN, setEveryN] = useState<number | ''>(2);
@@ -476,6 +521,8 @@ function HabitEditorSheet({
       targetValue: targetValue === '' ? undefined : targetValue,
       archived: false,
       order,
+      polarity,
+      ...(polarity === 'quit' ? { quitStartDate } : {}),
     });
     setName('');
     onClose();
@@ -497,7 +544,34 @@ function HabitEditorSheet({
         <TextField value={icon} onChange={setIcon} aria-label={t('habits.icon')} maxLength={2} />
 
         <div>
-          <Label>{t('habits.schedule')}</Label>
+          <SectionHeader title={t('habits.polarity')} />
+          <Segmented
+            ariaLabel={t('habits.polarity')}
+            value={polarity}
+            options={[
+              { value: 'build' as const, label: t('habits.polarityBuild') },
+              { value: 'quit' as const, label: t('habits.polarityQuit') },
+            ]}
+            onChange={setPolarity}
+          />
+        </div>
+
+        {polarity === 'quit' ? (
+          <div>
+            <SectionHeader title={t('habits.quitStartDate')} hint={t('habits.quitExplain')} />
+            <input
+              type="date"
+              value={quitStartDate}
+              max={todayFn()}
+              onChange={(e) => setQuitStartDate(e.target.value)}
+              className="tnum min-h-touch w-full rounded-xl border border-hairline bg-surface px-3"
+              aria-label={t('habits.quitStartDate')}
+            />
+          </div>
+        ) : null}
+
+        <div className={polarity === 'quit' ? 'hidden' : undefined}>
+          <SectionHeader title={t('habits.schedule')} />
           <div className="mt-1">
             <Segmented
               ariaLabel={t('habits.schedule')}
@@ -539,7 +613,7 @@ function HabitEditorSheet({
         ) : null}
 
         <div>
-          <Label>{t('habits.targetValue')}</Label>
+          <SectionHeader title={t('habits.targetValue')} />
           <div className="mt-1">
             <NumberField
               value={targetValue}

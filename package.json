@@ -1,7 +1,7 @@
 {
   "name": "lenta",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "description": "Lenta — offline-first personal PWA for nutrition, training and health",
   "scripts": {
@@ -17,7 +17,8 @@
     "seed:exercises": "node scripts/build-exercises.mjs",
     "seed:images": "node scripts/fetch-exercise-images.mjs",
     "fonts": "node scripts/fetch-fonts.mjs",
-    "check:spec": "node scripts/check-spec.mjs"
+    "check:spec": "node scripts/check-spec.mjs",
+    "check:contrast": "node scripts/check-contrast.mjs"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

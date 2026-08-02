@@ -22,6 +22,7 @@ import type {
   HabitLog,
   MealPlan,
   MetaRecord,
+  PlannedWorkout,
   Profile,
   Recipe,
   Routine,
@@ -53,6 +54,7 @@ export class LentaDB extends Dexie {
   workouts!: Table<Workout, string>;
   workoutSets!: Table<WorkoutSet, string>;
   cardio!: Table<CardioSession, string>;
+  plannedWorkouts!: Table<PlannedWorkout, string>;
   body!: Table<BodyMetric, string>;
   sleep!: Table<SleepLog, string>;
   checkins!: Table<DailyCheckin, string>;
@@ -94,6 +96,40 @@ export class LentaDB extends Dexie {
       blobs: 'id',
       meta: 'key',
     });
+
+    /**
+     * Версия 2 — доработка 0.7.
+     *
+     * Что меняется:
+     *   • у `workouts` появляется индекс `deletedAt` — история и графики
+     *     фильтруют удалённые тренировки запросом, а не перебором;
+     *   • новая таблица `plannedWorkouts` (задача 2), создаётся пустой;
+     *   • у привычек появляется полярность, у логов — исход (задача 3).
+     *
+     * Существующие данные сохраняются: `upgrade` только дополняет записи
+     * недостающими полями, ничего не удаляя.
+     */
+    this.version(2)
+      .stores({
+        workouts: 'id, date, routineId, startedAt, finishedAt, deletedAt',
+        plannedWorkouts: 'id, plannedDate, status, routineId, [status+plannedDate]',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('habits')
+          .toCollection()
+          .modify((habit: Partial<Habit>) => {
+            // Все существующие привычки — «хочу делать»: это их текущее поведение.
+            habit.polarity ??= 'build';
+          });
+
+        await tx
+          .table('habitLogs')
+          .toCollection()
+          .modify((log: Partial<HabitLog>) => {
+            log.outcome ??= log.completed ? 'success' : undefined;
+          });
+      });
   }
 }
 
@@ -116,6 +152,7 @@ export const EXPORTABLE_TABLES = [
   'workouts',
   'workoutSets',
   'cardio',
+  'plannedWorkouts',
   'body',
   'sleep',
   'checkins',

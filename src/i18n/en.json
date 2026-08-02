@@ -55,7 +55,8 @@
     "empty": "Nothing here yet",
     "offline": "Offline",
     "days": "days",
-    "daysWithData": "days with data"
+    "daysWithData": "days with data",
+    "clear": "Clear"
   },
   "units": {
     "kcal": "kcal",
@@ -189,7 +190,9 @@
     "secondary": "More numbers",
     "ribbonLabel": "Day ribbon: events from 00:00 to 24:00",
     "eatingWindow": "Eating window {{from}}–{{to}}",
-    "fastingFor": "Fasting {{hours}} h"
+    "fastingFor": "Fasting {{hours}} h",
+    "macros": "Macros",
+    "wellbeing": "Wellbeing"
   },
   "food": {
     "title": "Food",
@@ -415,7 +418,58 @@
     "kcalEstimate": "Burn (estimate)",
     "pace": "Pace {{value}} min/km",
     "noWorkouts": "No workouts yet",
-    "calendar": "Calendar"
+    "calendar": "Calendar",
+    "pickerGroups": {
+      "favorites": "Favourites",
+      "recent": "Recent",
+      "all": "All exercises",
+      "results": "Results"
+    },
+    "setType": "Type",
+    "removeSet": "Remove set",
+    "editMeta": "Name, date, note",
+    "openWorkout": "Open workout",
+    "deleteWorkout": "Delete workout",
+    "workoutDeleted": "Workout deleted",
+    "swipeToDelete": "Swipe the card left to delete",
+    "unlinkRoutine": "Unlink from routine",
+    "offPlanTitle": "You added exercises beyond the routine",
+    "offPlanBody": "Keep them in this workout only, or add them to the routine for good?",
+    "offPlanOnce": "Just today",
+    "offPlanKeep": "Add to the routine",
+    "routineEdit": "Edit routine",
+    "routineAddDay": "Add a day",
+    "routineRemoveDay": "Remove day",
+    "routineResetTemplate": "Reset to template",
+    "routineReset": "Routine reset to the template",
+    "routineResetHint": "Your edits will be lost. The undo bar brings them back.",
+    "moveUp": "Up",
+    "moveDown": "Down",
+    "supersetToggle": "Superset with previous",
+    "plan": "Plan",
+    "planNew": "Schedule",
+    "planDate": "Date",
+    "planFree": "Free workout",
+    "planFromRoutine": "From a routine",
+    "planBulk": "Schedule several weeks ahead",
+    "planWeeks": "Weeks ahead",
+    "planWeekdays": "Weekdays",
+    "planCreated": "Workouts scheduled: {{count}}",
+    "planOverdue": "Overdue",
+    "planMoveToday": "Move to today",
+    "planSkip": "Skip",
+    "planReschedule": "Reschedule",
+    "planShiftFollowing": "Shift the following workouts",
+    "planStart": "Start",
+    "planEmpty": "Nothing scheduled for this day",
+    "planStatus": {
+      "planned": "Scheduled",
+      "started": "Started",
+      "completed": "Done",
+      "skipped": "Skipped"
+    },
+    "targetWeight": "Target weight",
+    "planDeleted": "Plan deleted"
   },
   "body": {
     "title": "Body",
@@ -487,7 +541,23 @@
       "5": "Fri",
       "6": "Sat",
       "7": "Sun"
-    }
+    },
+    "polarity": "What we are doing",
+    "polarityBuild": "Build a habit",
+    "polarityQuit": "Quit a habit",
+    "quitLabel": "Quitting",
+    "quitStartDate": "Quit date",
+    "markDay": "Mark the day",
+    "markedToday": "Marked today",
+    "relapse": "I relapsed",
+    "relapseConfirm": "Record the relapse",
+    "relapseHint": "The streak starts over. Your best result and total days are kept.",
+    "relapseCount": "relapses: {{count}}",
+    "afterRelapse": "Streak started over. Best result: {{best}} days",
+    "nextMilestone": "{{days}} days to the {{milestone}}-day mark",
+    "daysUnit_one": "day",
+    "daysUnit_other": "days",
+    "quitExplain": "A missed day does not reset the streak: only a recorded relapse does."
   },
   "game": {
     "title": "Progress",
@@ -766,5 +836,11 @@
     "smith": "Smith",
     "ezBar": "EZ bar",
     "other": "Other"
+  },
+  "sheet": {
+    "unsavedTitle": "Your input is not saved",
+    "save": "Save",
+    "discard": "Discard",
+    "keepEditing": "Keep editing"
   }
 }

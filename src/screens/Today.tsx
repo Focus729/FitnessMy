@@ -21,8 +21,8 @@ import { award } from '@/app/gamification';
 import { levelProgress } from '@/domain/gamification/xp';
 import { isHabitDone, isScheduledOn, canEditRetroactively } from '@/domain/habits/schedule';
 import { timeLabel } from '@/domain/nutrition/fasting';
-import { num } from '@/lib/format';
-import { Bar, Ring, Button } from '@/design-system/primitives';
+import { dateShort, num } from '@/lib/format';
+import { Bar, Button, MetricValue, Panel, Ring } from '@/design-system/primitives';
 import { Ribbon, RibbonScale } from '@/design-system/Ribbon';
 import { WaterSheet } from '@/components/WaterSheet';
 import { AddFoodSheet } from '@/components/AddFoodSheet';
@@ -43,6 +43,8 @@ export function TodayScreen() {
   const sleep = useQuery((r) => r.sleep.byDate(date), [date]);
   const checkin = useQuery((r) => r.checkins.byDate(date), [date]);
   const unfinished = useQuery((r) => r.workouts.unfinished());
+  // «Ближайшее» берётся из планов (задача 2); при их отсутствии строка не выводится.
+  const nextPlan = useQuery((r) => r.plannedWorkouts.upcoming(date), [date]);
   const habitsToday = useQuery(
     async (r) => {
       const [habits, logs] = await Promise.all([r.habits.all(), r.habitLogs.byDate(date)]);
@@ -69,7 +71,7 @@ export function TodayScreen() {
   return (
     <div className="space-y-5">
       {/* Сигнатурный элемент — лента дня */}
-      <section aria-label={t('today.ribbonLabel')}>
+      <div aria-label={t('today.ribbonLabel')}>
         {ribbon ? (
           <>
             <Ribbon
@@ -94,10 +96,10 @@ export function TodayScreen() {
         ) : (
           <div className="h-6" />
         )}
-      </section>
+      </div>
 
       {/* 1 — осталось */}
-      <section>
+      <Panel>
         <div className="text-label uppercase text-muted">
           {over ? t('today.over') : t('today.remaining')}
         </div>
@@ -110,10 +112,10 @@ export function TodayScreen() {
             target: num(targets.kcal),
           })}
         </div>
-      </section>
+      </Panel>
 
       {/* 2 — БЖУ и клетчатка */}
-      <section className="space-y-2">
+      <Panel title={t('today.macros')} className="space-y-2">
         <Bar
           label={t('today.protein')}
           value={day.totals.proteinG}
@@ -145,28 +147,27 @@ export function TodayScreen() {
           sodium={day.totals.sodiumMg ?? 0}
           sodiumMax={targets.sodiumMaxMg}
         />
-      </section>
+      </Panel>
 
       {/* 3 — вода */}
-      <section>
+      <Panel title={t('today.water')}>
         <button
           type="button"
           onClick={() => setWaterOpen(true)}
           className="flex w-full items-center gap-3 py-1 text-left"
         >
           <Ring value={day.waterMl} target={targets.waterMl} ariaLabel={t('today.water')} />
-          <span className="flex-1">
-            <span className="block text-label uppercase text-muted">{t('today.water')}</span>
-            <span className="tnum block text-num">
-              {num(day.waterMl)} / {num(targets.waterMl)} {t('units.ml')}
-            </span>
-          </span>
+          <MetricValue
+            value={`${num(day.waterMl)} / ${num(targets.waterMl)}`}
+            unit={t('units.ml')}
+            size="lg"
+          />
         </button>
-      </section>
+      </Panel>
 
       {/* 4 — сон и шаги */}
       {settings.showSleep || settings.showSteps ? (
-        <section className="space-y-1">
+        <Panel title={t('today.wellbeing')} className="space-y-1">
           {settings.showSleep ? (
             <button
               type="button"
@@ -197,13 +198,12 @@ export function TodayScreen() {
               </span>
             </button>
           ) : null}
-        </section>
+        </Panel>
       ) : null}
 
       {/* 5 — привычки */}
       {habitsToday && habitsToday.length > 0 ? (
-        <section>
-          <div className="text-label uppercase text-muted">{t('today.habits')}</div>
+        <Panel title={t('today.habits')}>
           <ul className="mt-1 flex flex-wrap gap-1">
             {habitsToday.map(({ habit, done }) => (
               <li key={habit.id}>
@@ -222,22 +222,38 @@ export function TodayScreen() {
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
       ) : null}
 
-      {/* Строка тренировки — только при незавершённой или запланированной */}
+      {/* Строка тренировки — не блок: появляется только при незавершённой
+          или запланированной тренировке (13). Источник — планы, а при их
+          отсутствии, как и раньше, незавершённая тренировка. */}
       {unfinished ? (
-        <section className="flex items-center gap-3 border-t border-hairline pt-3">
+        <div className="flex items-center gap-3 border-t border-hairline pt-3">
           <span className="flex-1 text-caption text-muted">{t('today.resumeWorkout')}</span>
           <Button variant="primary" onClick={() => navigate(`/workout/${unfinished.id}`)}>
             {t('common.continue')}
           </Button>
-        </section>
+        </div>
+      ) : nextPlan ? (
+        <div className="flex items-center gap-3 border-t border-hairline pt-3">
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-caption text-muted">
+              {t('today.nextWorkout', { name: nextPlan.name })}
+            </span>
+            <span className="tnum block text-caption text-muted">
+              {dateShort(nextPlan.plannedDate)}
+            </span>
+          </span>
+          <Button variant="primary" onClick={() => navigate('/gym')}>
+            {t('today.startWorkout')}
+          </Button>
+        </div>
       ) : null}
 
       {/* Тихий RPG: полоса опыта 2 px и номер уровня (решение 2.5) */}
       {settings.gamificationEnabled ? (
-        <section className="flex items-center gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-2">
           <span className="tnum text-caption text-muted">
             {t('today.level', { level: level.level })}
           </span>
@@ -247,7 +263,7 @@ export function TodayScreen() {
               style={{ width: `${level.progress * 100}%` }}
             />
           </span>
-        </section>
+        </div>
       ) : null}
 
       <button
