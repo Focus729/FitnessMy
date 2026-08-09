@@ -25,7 +25,9 @@ export function ExerciseImages({ imageIds }: { imageIds: string[] }) {
 }
 
 function ExerciseImage({ id, alt }: { id: string; alt: string }) {
-  const local = `/exercise-images/${id.replace(/\.jpg$/i, '.webp')}`;
+  // BASE_URL учитывает подкаталог, если приложение развёрнуто не в корне
+  // (например, на GitHub Pages по адресу /<репозиторий>/).
+  const local = `${import.meta.env.BASE_URL}exercise-images/${id.replace(/\.jpg$/i, '.webp')}`;
   const [src, setSrc] = useState(local);
   const [hidden, setHidden] = useState(false);
 

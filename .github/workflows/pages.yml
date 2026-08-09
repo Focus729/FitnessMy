@@ -1,0 +1,61 @@
+# Сборка и публикация на GitHub Pages.
+#
+# Собирает приложение с базовым путём /<репозиторий>/ и кладёт результат в
+# ветку gh-pages. Ветка содержит только собранный сайт — исходники в неё
+# не попадают.
+#
+# Запускается при каждом пуше в рабочую ветку и вручную из вкладки Actions.
+name: pages
+
+on:
+  push:
+    branches:
+      - claude/web-app-from-spec-f0o9v9
+      - main
+  workflow_dispatch:
+
+# Разрешение на запись в репозиторий нужно, чтобы обновить ветку gh-pages.
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Публикуем только то, что прошло проверки.
+      - run: npm run lint
+      - run: npm test
+
+      - name: Собрать с базовым путём репозитория
+        run: VITE_BASE="/${GITHUB_REPOSITORY#*/}/" npm run build
+
+      - name: Подготовить артефакт
+        run: |
+          # .nojekyll отключает обработку Jekyll: иначе GitHub Pages
+          # игнорирует файлы и папки, начинающиеся с подчёркивания.
+          touch dist/.nojekyll
+          # Запасной вход: приложение использует HashRouter, но если кто-то
+          # откроет глубокий путь напрямую, Pages отдаст 404.html.
+          cp dist/index.html dist/404.html
+
+      - name: Опубликовать в ветку gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: 'Сборка из ${{ github.sha }}'

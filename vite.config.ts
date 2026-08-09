@@ -3,7 +3,17 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'node:path';
 
+/**
+ * Базовый путь. На GitHub Pages сайт проекта живёт по адресу
+ * https://<пользователь>.github.io/<репозиторий>/, поэтому все ссылки на
+ * ресурсы должны начинаться с имени репозитория. Значение задаётся
+ * переменной VITE_BASE при сборке (см. npm run build:pages); для разработки
+ * и обычной сборки остаётся корень.
+ */
+const base = process.env.VITE_BASE ?? '/';
+
 export default defineConfig({
+  base,
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
@@ -39,8 +49,9 @@ export default defineConfig({
         background_color: '#F5F6F8',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        // Относительно базового пути: на Pages это /<репозиторий>/
+        start_url: base,
+        scope: base,
         lang: 'ru',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -56,7 +67,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,svg,png,webp,json}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
-        navigateFallback: 'index.html',
+        navigateFallback: `${base}index.html`,
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
