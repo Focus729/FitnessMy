@@ -46,6 +46,8 @@ try {
     });
     const ru = locale === 'ru-RU';
     await page.goto(base);
+    await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+    expect(await page.locator('link[rel="manifest"]').evaluate(link => link.href)).toBe(`${base}manifest.webmanifest`);
     const manifest = await (await page.request.get(`${base}manifest.webmanifest`)).json();
     expect(manifest.start_url).toBe('/FitnessMy/');
     expect(manifest.scope).toBe('/FitnessMy/');
