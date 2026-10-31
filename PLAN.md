@@ -5,11 +5,12 @@
 - Objective: implement the Training companion direction B across Lenta, improve daily logging, and resolve all 24 audit requirements without losing existing data or features.
 - Baseline: local `master`, commit `6ec0ff0a514ceabcc6e71250d6c4c403e0d415e7`, version 0.7.0; origin `https://github.com/Focus729/FitnessMy.git`.
 - Approval scope: on 2026-10-29 Pavel selected **direction B** and requested this plan. On 2026-10-29 Pavel explicitly approved the full plan (REQ-01–24, M0–M7), direction B, technical approach, and no-new-service-cost boundary.
-- Active milestone: M7 release. Local implementation and available acceptance checks for M0–M6 are complete; physical-device/live-service evidence limits remain explicit below.
-- Next action: commit the reviewed source, run the clean-commit release gate, publish and verify the deployed revision. All 24 requirements remain approved scope.
-- Blockers: no local implementation blocker. Production responds at https://focus729.github.io/FitnessMy/ (HTTP 200 verified 2026-10-30); existing Pages uses gh-pages. Publication remains gated on the clean-commit check and deployed verification. Security exposure and release procedure are documented in docs/audit/SECURITY_REVIEW.md and RELEASE.md.
+- Active milestone: M0–M7 completed within the approved implementation scope. Published and verified on 2026-10-31. Physical-device/live-service evidence limits remain explicit below.
+- Next action: no remaining implementation or publication action in the approved scope. Physical-device camera/keyboard and optional live-service checks remain unverified; human task-speed goals remain unmeasured.
+- Blockers: none for this release. Repository and deployment history were preserved; no paid resource or new service was activated. Remaining dependency exposure is documented in docs/audit/SECURITY_REVIEW.md.
 - Evidence: a full local gate passed on 2026-10-31 with 215/215 tests, 22/22 browser scenarios, lint, 48 contrast pairs, 96.69% domain coverage and a 184/400 KB initial gzip bundle. Three additional product/recipe/habit write-failure and retry scenarios subsequently passed. The final all-scenario gate passed with 215/215 tests and 25/25 browser scenarios after these fixes and tab/date memory. RU/EN imperial measurements and stale-backup reminder/snooze passed (editor-results.json). 64 baseline redesign captures plus 16 profile B captures had no page errors/overflow. Browser production-path offline/update evidence is in docs/audit/redesign/production-path-results.json.
-- Release state: application and documentation changes are local and uncommitted; no push or deployment. The local /FitnessMy/ artifact, manifest/scope and fail-fast release gate were verified. Deployed revision verification remains outstanding.
+- Release state: source `c0b755a48e47e652d0780fa2b39ab5aaac016312` is on master; deployed artifact `c42e5be7e7ad8806b98843b9b6927441191a87f0` is on gh-pages. GitHub Pages run [41232853527](https://github.com/Focus729/FitnessMy/actions/runs/41232853527) succeeded. Live https://focus729.github.io/FitnessMy/ returned the expected source revision and passed RU/EN offline food correction, workout resume, backup replacement, profile isolation and unit preservation with zero page/asset errors. Evidence: docs/audit/redesign/live/production-path-results.json.
+- Exact revision checks: the complete clean-commit gate passed on `d29cc1f27becda54c86b7c2baeab897134a05511`. The subsequent `c0b755a` change only removes a duplicate root manifest link and adds its browser assertion; TypeScript/production build and both-language production-path/offline/update/backup/profile checks passed after it. Application JS/CSS assets are unchanged by that focused fix. Live verification checks the final `c0b755a` marker.
 
 ## Implementation checkpoint — 2026-10-30
 
@@ -26,15 +27,16 @@ Verified since the preceding checkpoint (2026-10-31):
 - Routine changes validate set/repetition/rest bounds, survive reload and return after template reset/Undo. Calendar move/edit/skip checks passed; tab/date restoration was added to the final regression.
 - Profile B has 16 additional phone/desktop RU/EN captures, including sparse body-history fixtures, with no page errors or overflow.
 
-Remaining release work (not optional follow-ups):
+Release completion:
 
-1. Commit the verified source and run the release gate with that exact source revision. Product, recipe and habit dirty-close/write-failure/retry cases pass; dishes/recipes support recoverable deletion. Final RU/EN routine and measurement captures were inspected.
-2. Publish the checked /FitnessMy/ artifact and verify its source revision and live scenarios. Final local RU/EN offline food correction, workout/timer reload, explicit update preserving sets, backup round trip and two-profile isolation passed; see production-path-results.json.
-3. Physical-device installation/keyboard/camera, live Drive and human task-speed measurements remain unverified when unavailable; these are explicit evidence limits, not claims of tested functionality.
+1. Clean-source gate: 215 tests, 25 browser scenarios, lint, contrast, coverage, bundle and production build passed.
+2. Final manifest correction: exactly one manifest link resolves under /FitnessMy/; focused local checks passed. Source and deployment commits were pushed without force.
+3. Pages workflow and final build identity verified; live RU/EN scenarios passed with disposable synthetic profiles. Local explicit-update testing passed; a second live deployment was not triggered merely to repeat that check.
+4. Physical-device installation/keyboard/camera, live Drive and human task-speed measurements remain unverified. These evidence limits and retained dependency risks are documented in REDESIGN_VERIFICATION.md.
 
 The final audit reconciliation found two remaining implementation omissions and corrected them: recipe/product/habit draft protection (REQ-16) and profile-scoped tab/date return state (REQ-09). No approved requirement was dropped. jsdom checks now use one worker after observed system-memory failures; the JSX copy check parses actual syntax rather than mistaking generic return types for UI text.
 
-React Router DOM was patched from 6.30.4 to compatible 6.30.6 with its declared router dependencies; no new package family or service was added. Remaining advisories are documented. No paid calls, production writes, commits or deployment have been introduced by this checkpoint.
+React Router DOM was patched from 6.30.4 to compatible 6.30.6 with its declared router dependencies; no new package family or service was added. Remaining advisories are documented. No paid calls or writes to existing user data were introduced. The verified artifact was published to the established Pages target; live test records existed only in disposable browser contexts.
 
 ## Scope and working assumptions
 
@@ -68,7 +70,7 @@ Prefer existing dependencies. Before adopting/upgrading a significant dependency
 
 ## Milestones and tasks
 
-Task-level evidence below is still required; implementation is in progress. During implementation, track `Implemented`, `Verified`, and `Released` separately and attach evidence rather than treating code completion as release completion.
+The task definitions below are preserved as the approved scope; actual completion evidence is recorded above and in the requirement table. During implementation, track `Implemented`, `Verified`, and `Released` separately and attach evidence rather than treating code completion as release completion.
 
 ### M0 — Reproducible baseline and regression fixtures
 
@@ -178,7 +180,7 @@ Gate: verified deployed revision and main journeys, known recovery path, accurat
 | REQ-21 Persistent planning | T4.3 | Week drafts/checks survive reload, no duplicate logging | Verified locally: week draft/shopping persistence and idempotent apply pass |
 | REQ-22 Device/backup guidance | T6.1 | Transfer, storage denial, stale backup, per-profile snooze | Implemented; storage denial and backup-age/snooze verified in RU/EN fixtures |
 | REQ-23 First use | T3.1, T6.1 | Confirmed inputs, consistent name, useful first action | Verified locally: confirmed onboarding used in all browser scenarios |
-| REQ-24 Quality/release evidence | T0.1–3, T6.2–3, T7.1–3 | Stable checks, compatibility rationale, tested/deployed SHA | In progress: final gate, complete review and deployed verification outstanding |
+| REQ-24 Quality/release evidence | T0.1–3, T6.2–3, T7.1–3 | Stable checks, compatibility rationale, tested/deployed SHA | Released and verified: source c0b755a, Pages c42e5be; evidence limits documented |
 
 Detailed acceptance criteria in the audit remain binding unless this plan explicitly refines them. No audit requirement is rejected. Deferred sub-scope: paid/live AI testing, new integrations, and live sync. Real camera/Drive/device verification remains a release evidence dependency when those capabilities are claimed as verified, not a reason to silently remove existing functionality.
 

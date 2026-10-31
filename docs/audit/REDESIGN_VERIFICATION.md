@@ -19,4 +19,12 @@ The final dependency audit reports 39 affected packages, including build/test de
 
 One full check was interrupted by system memory exhaustion; jsdom workers are bounded to one and subsequent full checks passed. Two new browser fixtures initially used incomplete/ambiguous selectors; corrected fixtures passed without relaxing assertions. The JSX copy checker now parses JSX syntax, avoiding a false report for Promise<void>.
 
-Publication and live verification are separate gates. Until PLAN.md records the deployed revision, this document proves local acceptance only.
+## Published revision
+
+- Source: c0b755a48e47e652d0780fa2b39ab5aaac016312 on master.
+- Artifact: c42e5be7e7ad8806b98843b9b6927441191a87f0 on gh-pages.
+- Workflow: https://github.com/Focus729/FitnessMy/actions/runs/41232853527 — success.
+- URL: https://focus729.github.io/FitnessMy/.
+- Live RU/EN fixtures confirmed the expected source marker, exactly one correctly scoped manifest link, offline food correction, workout resume, backup replacement, two-profile isolation and unchanged canonical units; zero page/asset errors. See redesign/live/production-path-results.json.
+
+The full clean-commit gate ran on d29cc1f. The following c0b755a commit removes an obsolete duplicate manifest link; affected TypeScript/build/PWA/offline/update/backup/profile checks passed afterward. Its application JS/CSS assets are identical. The update-prompt test was local; live checks did not trigger another deployment. Final documentation commits do not change the published application artifact.

@@ -1,8 +1,8 @@
 # Lenta
 
-## Training companion redesign (in progress)
+## Training companion redesign
 
-The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Local verification and remaining acceptance work are recorded in the plan. This redesign has not yet been published.
+The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Verification results and evidence limits are recorded in the plan. Published on 2026-10-31 at https://focus729.github.io/FitnessMy/; release evidence is in [REDESIGN_VERIFICATION.md](docs/audit/REDESIGN_VERIFICATION.md).
 
 Use [RELEASE.md](RELEASE.md) for the existing GitHub Pages target, production-path build and sequential checks. `npm run check:release` checks the local increment without deploying it. Dependency exposure is documented in [SECURITY_REVIEW.md](docs/audit/SECURITY_REVIEW.md).
 

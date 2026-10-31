@@ -6,7 +6,7 @@
 - Hosting: existing GitHub Pages deployment from `gh-pages`; no new service or paid resource.
 - Production: https://focus729.github.io/FitnessMy/ (HTTP 200, title Lenta, verified 2026-10-30).
 - Existing manifest: `start_url` and `scope` are `/FitnessMy/`; preserve this installed-app identity.
-- Last inspected deployment: GitHub Actions run 31310796231, gh-pages revision `abbcc35e2c19b7abc9840b8368760268a8b1edfd`. The redesign has not been deployed.
+- Previous deployment retained for recovery: GitHub Actions run 31310796231, gh-pages revision `abbcc35e2c19b7abc9840b8368760268a8b1edfd`. The current verified redesign is recorded below.
 
 ## Local and production builds
 
@@ -29,4 +29,6 @@ Keep the previous deployed artifact revision and a sanitized downloadable data b
 
 ## Current state
 
-Local implementation only. No redesign commit, push or deployment. Local acceptance and production-path/offline/update checks passed. The clean-commit gate, publication and deployed verification remain outstanding. Physical device installation, camera and live Drive are unverified and must not be claimed as tested.
+Published and live-verified on 2026-10-31. Source c0b755a48e47e652d0780fa2b39ab5aaac016312; gh-pages c42e5be7e7ad8806b98843b9b6927441191a87f0; successful Pages run 41232853527. The full clean-source gate passed on d29cc1f; the subsequent single-manifest-link correction passed the affected build/PWA checks. Live RU/EN launch, manifest identity, offline food correction, workout resume, unit preservation, backup replacement and profile isolation passed with no page or asset errors. Explicit update preservation was verified locally, without causing a redundant second production deployment.
+
+The previous deployed artifact abbcc35e2c19b7abc9840b8368760268a8b1edfd remains in branch history. Physical-device installation/keyboard/camera, live Drive and human task-speed measurements remain unverified. See PLAN.md and docs/audit/REDESIGN_VERIFICATION.md for evidence and retained risks.

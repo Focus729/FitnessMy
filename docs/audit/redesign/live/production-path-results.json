@@ -1,0 +1,36 @@
+[
+  {
+    "locale": "ru-RU",
+    "width": 390,
+    "scope": "https://focus729.github.io/FitnessMy/",
+    "revision": "c0b755a48e47e652d0780fa2b39ab5aaac016312",
+    "updateRevision": null,
+    "offlineReload": true,
+    "offlineFoodSave": true,
+    "offlineWorkoutResume": true,
+    "explicitUpdatePreservesWorkout": false,
+    "backupRoundTrip": true,
+    "profileIsolation": true,
+    "canonicalWeight": 80.00008629690001,
+    "unitSwitchPreservesData": true,
+    "errors": [],
+    "assetFailures": []
+  },
+  {
+    "locale": "en-US",
+    "width": 1440,
+    "scope": "https://focus729.github.io/FitnessMy/",
+    "revision": "c0b755a48e47e652d0780fa2b39ab5aaac016312",
+    "updateRevision": null,
+    "offlineReload": true,
+    "offlineFoodSave": true,
+    "offlineWorkoutResume": true,
+    "explicitUpdatePreservesWorkout": false,
+    "backupRoundTrip": true,
+    "profileIsolation": true,
+    "canonicalWeight": 80.00008629690001,
+    "unitSwitchPreservesData": true,
+    "errors": [],
+    "assetFailures": []
+  }
+]
