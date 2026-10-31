@@ -34,6 +34,7 @@
     "deleted": "Deleted",
     "notSet": "not set",
     "loading": "Loading",
+    "retry": "Try again",
     "more": "More",
     "less": "Less",
     "start": "Start",
@@ -76,7 +77,8 @@
     "lb": "lb",
     "oz": "oz",
     "in": "in",
-    "km": "km"
+    "km": "km",
+    "mi": "mi"
   },
   "nav": {
     "today": "Today",
@@ -158,7 +160,8 @@
     "softerPace": "Choose a gentler rate",
     "keepAnyway": "Keep as is",
     "finishTitle": "Ready",
-    "finishBody": "The easiest first record is the plus button at the bottom of the screen."
+    "finishBody": "The easiest first record is the plus button at the bottom of the screen.",
+    "confirmPersonal": "I checked my name, sex, birth date and height"
   },
   "today": {
     "title": "Today",
@@ -221,6 +224,7 @@
     "searchPlaceholder": "Food name",
     "searchOnline": "Search online",
     "searchOnlineHint": "The query goes to Open Food Facts and USDA. Anything found is saved locally.",
+    "searchNoMatch": "No matching foods. Try another name or create a food manually.",
     "searchNothing": "Nothing found",
     "createFood": "Create food",
     "createFoodMinimal": "A name and calories are enough. The rest whenever you feel like it.",
@@ -326,9 +330,19 @@
     "unfavorite": "Remove from favourites",
     "repeatTomorrow": "Repeat tomorrow",
     "toMyDishes": "To my dishes",
-    "nova": "NOVA processing {{group}}"
+    "nova": "NOVA processing {{group}}",
+    "uncategorized": "Uncategorized",
+    "duplicateEntry": "Add a copy",
+    "quickEntry": "Quick entry",
+    "planWeek": "Menu week",
+    "repeatPortion": "Repeat",
+    "weekToDateHint": "From the start of the week through the selected date. Unlogged days remain part of the period."
   },
   "gym": {
+    "planBounds": "Select a date. Use 1–50 sets, a whole-number rep range from 1 to 1,000, and a weight from 0 to 1,500 kg (3,306.93 lb). The upper rep limit must be at least the lower limit.",
+    "paceImperial": "Pace {{value}} min/mi",
+    "cardioBounds": "Enter a duration greater than zero and no longer than 24 hours; an optional distance up to 1,000 km (621.37 mi); and an optional whole-number heart rate from 20 to 250.",
+    "setBounds": "Weight must be between 0 and 1,500 kg (3,306.93 lb); reps a whole number from 0 to 1,000; RPE from 1 to 10 or blank. Correct the highlighted fields before completing the set.",
     "title": "Gym",
     "workouts": "Workouts",
     "routines": "Routines",
@@ -363,27 +377,27 @@
     "restDone": "Rest is over",
     "superset": "Superset",
     "plateTitle": "Plate layout",
-    "plateBar": "Bar {{kg}} kg",
+    "plateBar": "Bar {{kg}} {{unit}}",
     "platePerSide": "Per side",
     "plateExact": "The weight loads exactly",
-    "plateNearest": "Cannot load exactly. Nearest weight is {{kg}} kg",
+    "plateNearest": "Cannot load exactly. Nearest weight is {{kg}} {{unit}}",
     "finishWorkout": "Finish workout",
-    "finishSummary": "{{sets}} · volume {{volume}} kg · {{duration}}",
+    "finishSummary": "{{sets}} · volume {{volume}} {{unit}} · {{duration}}",
     "feelRating": "How did it go",
     "unfinishedTitle": "Unfinished workout",
     "unfinishedBody": "The workout from {{date}} was left open.",
     "discard": "Discard workout",
     "progressionHint": {
-      "increaseWeight": "Last time: {{prev}}. Try {{weight}} kg × {{reps}}",
-      "increaseReps": "Last time: {{prev}}. Try {{weight}} kg × {{reps}}",
+      "increaseWeight": "Last time: {{prev}}. Try {{weight}} {{unit}} × {{reps}}",
+      "increaseReps": "Last time: {{prev}}. Try {{weight}} {{unit}} × {{reps}}",
       "repeat": "Last time: {{prev}}. Repeat the same weight",
-      "deload": "The weight has not moved for three sessions. You can drop to {{weight}} kg for one session"
+      "deload": "The weight has not moved for three sessions. You can drop to {{weight}} {{unit}} for one session"
     },
-    "prevFormat": "{{weight}} kg × {{reps}}",
+    "prevFormat": "{{weight}} {{unit}} × {{reps}}",
     "volume": "Volume",
     "duration": "Duration",
     "oneRm": "1RM",
-    "oneRmEstimate": "1RM {{value}} kg (estimate)",
+    "oneRmEstimate": "1RM {{value}} {{unit}} (estimate)",
     "records": "Records",
     "recordWeight": "Heaviest weight",
     "recordReps": "Most reps",
@@ -401,6 +415,8 @@
     "routineDays": "Days",
     "routineDay": "Day",
     "targetSets": "Sets",
+    "targetRepsMin": "Minimum reps",
+    "targetRepsMax": "Maximum reps",
     "targetReps": "Reps",
     "rest": "Rest",
     "cardioNew": "Log cardio",
@@ -443,6 +459,7 @@
     "routineResetTemplate": "Reset to template",
     "routineReset": "Routine reset to the template",
     "routineResetHint": "Your edits will be lost. The undo bar brings them back.",
+    "routineBounds": "Keep at least one day. Use 1–50 sets, 1–1000 reps (maximum no lower than minimum), and 0–3600 seconds of rest.",
     "moveUp": "Up",
     "moveDown": "Down",
     "supersetToggle": "Superset with previous",
@@ -505,6 +522,7 @@
     "soreness": "Soreness",
     "steps": "Steps",
     "stepsManual": "Entered by hand: a browser cannot count steps in the background.",
+    "stepsInvalid": "Enter a whole number from 0 to 200,000 steps.",
     "checkinSaved": "Check-in saved"
   },
   "habits": {
@@ -650,9 +668,13 @@
     "diffHigher": "higher by {{value}}",
     "diffLower": "lower by {{value}}",
     "shareImage": "Save as image",
-    "noData": "No data for this chart yet"
+    "noData": "No data for this chart yet",
+    "interpolationHint": "Dots show recorded weight. Dashed sections estimate the trend between missing entries.",
+    "onePoint": "{{date}}: {{value}}. One entry so far — add another to see a chart.",
+    "habitScopeHint": "Current build habits, using their current schedules. Schedule-change history was not recorded; quit habits are shown separately in Body."
   },
   "settings": {
+    "storageUnavailable": "The browser could not report storage status. Keep a downloaded backup of your data.",
     "title": "Settings",
     "sections": {
       "profile": "Profile",
@@ -727,7 +749,8 @@
     "attributionOff": "Product data — Open Food Facts, ODbL licence.",
     "attributionUsda": "Built-in food set — USDA FoodData Central, public domain.",
     "attributionExercises": "Exercise database — free-exercise-db, public domain.",
-    "version": "Version {{version}}"
+    "version": "Version {{version}}",
+    "deviceStorageHint": "Data stays in this browser on this device. Clearing browser data can remove your journal. Download backups regularly; use export and import to move to another device."
   },
   "backup": {
     "reminderTitle": "Time for a backup",
@@ -748,7 +771,10 @@
     "importDone": "Backup loaded",
     "errFormat": "This is not a Lenta backup file.",
     "errVersion": "The file was made by another version of the app (v{{version}}). Update the app and try again.",
-    "errParse": "The file is damaged and cannot be read."
+    "errParse": "The file is damaged and cannot be read.",
+    "credentialsOmitted": "API keys are excluded. Reconnect your provider after restoring.",
+    "removed": "Records removed by replacement: {{count}}",
+    "downloadRecovery": "Download pre-restore copy"
   },
   "ai": {
     "title": "AI",
@@ -791,7 +817,7 @@
     "networkOffline": "No network. Online search returns when the connection does.",
     "networkFailed": "The reference did not answer. Try later or create the food by hand.",
     "notFound": "Nothing found",
-    "saveFailed": "Could not save. Try again.",
+    "saveFailed": "Could not save. Your draft is still here — please retry.",
     "importFailed": "The file could not be loaded",
     "aiFailed": "The provider did not answer. The draft can be filled by hand."
   },

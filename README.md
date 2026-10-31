@@ -1,5 +1,11 @@
 # Lenta
 
+## Training companion redesign (in progress)
+
+The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Local verification and remaining acceptance work are recorded in the plan. This redesign has not yet been published.
+
+Use [RELEASE.md](RELEASE.md) for the existing GitHub Pages target, production-path build and sequential checks. `npm run check:release` checks the local increment without deploying it. Dependency exposure is documented in [SECURITY_REVIEW.md](docs/audit/SECURITY_REVIEW.md).
+
 Личное офлайн-первое PWA для питания, тренировок и здоровья. На двоих.
 Сервера нет, рекламы нет, подписок нет, аналитики нет. Данные лежат только
 в вашем браузере.
@@ -63,7 +69,7 @@ npm run build   # собрать готовое приложение в папк
 
 | Раздел | Что внутри |
 |---|---|
-| **Сегодня** | Лента дня, остаток калорий, БЖУ и клетчатка, вода, сон и шаги, привычки. Ровно пять блоков |
+| **Today** | Active or upcoming workout, nutrition balance, direct food/body logging and named habit actions; responsive direction B layout |
 | **Еда** | Дневник по слотам, поиск, штрихкод, быстрый ввод, копирование дня, разбор текста, мои блюда, рецепты с уваркой, индекс питания, планировщик меню и список покупок |
 | **Зал** | Свободные тренировки и программы, 8 встроенных шаблонов, ~870 упражнений, таймер отдыха, план блинов, подсказки прогрессии, оценка 1ПМ, кардио. **Планирование на календаре**, правка и удаление завершённых тренировок, полноценный редактор программ |
 | **Тело** | Вес со скользящим средним, 10 замеров, сон, ежедневный чек-ин, привычки с сериями и заморозками. **Привычки-отказы** со счётчиком дней воздержания и вехами |

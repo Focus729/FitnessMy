@@ -1,3 +1,4 @@
+import { MeasureField } from '@/components/MeasureField';
 /**
  * Таблица подходов упражнения — раздел 10.1 ТЗ.
  *
@@ -12,8 +13,11 @@
  * получалось редактировать.
  */
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 import type { SetType, WorkoutSet } from '@/domain/model';
 import { num } from '@/lib/format';
+import { useSettings } from '@/app/hooks';
+import { toDisplay, unitKey } from '@/lib/units';
 import { Button, NumberField } from '@/design-system/primitives';
 
 const SET_TYPES: SetType[] = ['normal', 'warmup', 'drop', 'failure'];
@@ -39,20 +43,40 @@ export function SetsTable({
   onPlates?: (weightKg: number) => void;
 }) {
   const { t } = useTranslation();
+  const { units } = useSettings();
   const previous = (lastSets ?? []).filter((s) => s.type !== 'warmup');
   const showPrevious = mode === 'active';
+  const [invalid, setInvalid] = useState<Record<string, boolean>>({});
+  const updateValue = (setId: string, field: 'weightKg' | 'reps' | 'rpe', value: number | '') => {
+    const valid =
+      field === 'rpe'
+        ? value === '' || (value >= 1 && value <= 10)
+        : value !== '' &&
+          (field === 'reps'
+            ? Number.isInteger(value) && value >= 0 && value <= 1000
+            : value >= 0 && value <= 1500);
+    setInvalid((current) => ({ ...current, [`${setId}.${field}`]: !valid }));
+    if (valid) onChangeSet(setId, { [field]: value === '' ? undefined : value });
+  };
 
   return (
     <div>
-      <table className="w-full text-caption">
+      {sets.some((set) =>
+        ['weightKg', 'reps', 'rpe'].some((field) => invalid[`${set.id}.${field}`]),
+      ) ? (
+        <p role="alert" className="mb-2 text-caption text-over">
+          {t('gym.setBounds')}
+        </p>
+      ) : null}
+      <table className="sets-table w-full text-caption">
         <thead>
           <tr className="text-label uppercase text-muted">
             <th className="w-6 text-left">#</th>
             {showPrevious ? <th className="text-left">{t('gym.previous')}</th> : null}
             {!showPrevious ? <th className="w-24 text-left">{t('gym.setType')}</th> : null}
-            <th className="w-20 text-left">{t('gym.weight')}</th>
-            <th className="w-16 text-left">{t('gym.reps')}</th>
-            <th className="w-14 text-left">{t('gym.rpe')}</th>
+            <th className="w-36 text-left">{t('gym.weight')}</th>
+            <th className="w-24 text-left">{t('gym.reps')}</th>
+            <th className="w-20 text-left">{t('gym.rpe')}</th>
             <th className="w-10" />
             {onRemoveSet ? <th className="w-10" /> : null}
           </tr>
@@ -60,19 +84,25 @@ export function SetsTable({
         <tbody>
           {sets.map((set, i) => (
             <tr key={set.id} className="align-middle">
-              <td className="tnum text-muted">{i + 1}</td>
+              <td className="tnum text-muted" data-label="#">
+                {i + 1}
+              </td>
 
               {showPrevious ? (
-                <td className="tnum text-muted">
+                <td className="tnum text-muted" data-label={t('gym.previous')}>
                   {previous[i]
                     ? t('gym.prevFormat', {
-                        weight: num((previous[i] as WorkoutSet).weightKg),
+                        weight: num(
+                          toDisplay((previous[i] as WorkoutSet).weightKg, 'mass', units),
+                          2,
+                        ),
+                        unit: t(`units.${unitKey('mass', units)}`),
                         reps: (previous[i] as WorkoutSet).reps,
                       })
                     : t('gym.noPrevious')}
                 </td>
               ) : (
-                <td className="py-1 pr-1">
+                <td className="py-1 pr-1" data-label={t('gym.setType')}>
                   <select
                     className="min-h-touch w-full rounded-lg border border-hairline bg-surface px-1 text-caption"
                     value={set.type}
@@ -88,50 +118,51 @@ export function SetsTable({
                 </td>
               )}
 
-              <td className="py-1 pr-1">
+              <td className="py-1 pr-1" data-label={t('gym.weight')}>
+                <MeasureField
+                  value={set.weightKg}
+                  onChange={(v) => updateValue(set.id, 'weightKg', v)}
+                  aria-invalid={Boolean(invalid[`${set.id}.weightKg`])}
+                  aria-label={t('gym.weight')}
+                />
                 {onPlates ? (
                   <button
                     type="button"
-                    className="w-full text-left"
+                    className="min-h-touch text-caption text-accent"
                     onClick={() => onPlates(set.weightKg)}
                     aria-label={t('gym.plateTitle')}
                   >
-                    <NumberField
-                      value={set.weightKg}
-                      onChange={(v) => onChangeSet(set.id, { weightKg: v === '' ? 0 : v })}
-                      aria-label={t('gym.weight')}
-                    />
+                    ⊕
                   </button>
-                ) : (
-                  <NumberField
-                    value={set.weightKg}
-                    onChange={(v) => onChangeSet(set.id, { weightKg: v === '' ? 0 : v })}
-                    aria-label={t('gym.weight')}
-                  />
-                )}
+                ) : null}
               </td>
 
-              <td className="py-1 pr-1">
+              <td className="py-1 pr-1" data-label={t('gym.reps')}>
                 <NumberField
                   value={set.reps}
-                  onChange={(v) => onChangeSet(set.id, { reps: v === '' ? 0 : v })}
+                  onChange={(v) => updateValue(set.id, 'reps', v)}
+                  aria-invalid={Boolean(invalid[`${set.id}.reps`])}
                   aria-label={t('gym.reps')}
                 />
               </td>
 
-              <td className="py-1 pr-1">
+              <td className="py-1 pr-1" data-label={t('gym.rpe')}>
                 <NumberField
                   value={set.rpe ?? ''}
-                  onChange={(v) => onChangeSet(set.id, { rpe: v === '' ? undefined : v })}
+                  onChange={(v) => updateValue(set.id, 'rpe', v)}
+                  aria-invalid={Boolean(invalid[`${set.id}.rpe`])}
                   aria-label={t('gym.rpe')}
                 />
               </td>
 
-              <td>
+              <td data-label={t('common.done')}>
                 <button
                   type="button"
                   aria-label={t('common.done')}
                   aria-pressed={set.isCompleted}
+                  disabled={['weightKg', 'reps', 'rpe'].some(
+                    (field) => invalid[`${set.id}.${field}`],
+                  )}
                   onClick={() => onToggleComplete(set)}
                   className={`tappable w-full justify-center rounded-lg border ${
                     set.isCompleted ? 'border-accent text-accent' : 'border-hairline text-muted'

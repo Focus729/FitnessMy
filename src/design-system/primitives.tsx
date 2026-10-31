@@ -31,7 +31,10 @@ export function Button({
   full,
   className = '',
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; full?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  full?: boolean;
+}) {
   const base =
     'inline-flex items-center justify-center gap-2 min-h-touch px-4 rounded-xl text-[15px] font-semibold transition-colors disabled:opacity-40 disabled:pointer-events-none';
   const variants: Record<ButtonVariant, string> = {
@@ -107,6 +110,12 @@ export function NumberField({
   selectOnFocus?: boolean;
 }) {
   const ref = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState(String(value));
+  const lastEmitted = useRef<number | ''>(value);
+  useEffect(() => {
+    if (value !== lastEmitted.current) setDraft(String(value));
+    lastEmitted.current = value;
+  }, [value]);
 
   useEffect(() => {
     if (props.autoFocus && ref.current) {
@@ -124,15 +133,19 @@ export function NumberField({
         type="text"
         inputMode="decimal"
         className={`tnum w-full bg-transparent outline-none ${big ? 'text-[32px] leading-[40px] font-medium' : 'text-num'} min-h-touch`}
-        value={value === '' ? '' : String(value)}
+        value={draft}
         onFocus={(e) => {
           if (selectOnFocus) e.currentTarget.select();
         }}
         onChange={(e) => {
-          const raw = e.target.value.replace(',', '.').replace(/[^\d.]/g, '');
-          if (raw === '') return onChange('');
+          const input = e.target.value;
+          if (!/^\d*([.,]\d*)?$/.test(input)) return;
+          setDraft(input);
+          const raw = input.replace(',', '.');
           const parsed = Number(raw);
-          onChange(Number.isFinite(parsed) ? parsed : '');
+          const next = raw === '' || !Number.isFinite(parsed) ? '' : parsed;
+          lastEmitted.current = next;
+          onChange(next);
         }}
         {...props}
       />
@@ -204,7 +217,7 @@ export function Segmented<T extends string | number>({
       role="radiogroup"
       aria-label={ariaLabel}
       className={`flex gap-1 rounded-xl border border-hairline p-1 ${
-        scrollable ? 'no-scrollbar overflow-x-auto' : ''
+        scrollable ? 'flex-wrap' : 'flex-wrap sm:flex-nowrap'
       }`}
     >
       {options.map((o) => {
@@ -216,8 +229,8 @@ export function Segmented<T extends string | number>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={`min-h-[36px] rounded-lg px-2 text-caption font-semibold transition-colors ${
-              scrollable ? 'shrink-0 px-3' : 'flex-1'
+            className={`min-h-touch rounded-lg px-2 text-caption font-semibold transition-colors ${
+              scrollable ? 'flex-1 px-3' : 'flex-1'
             } ${active ? 'bg-ink text-paper' : 'text-muted'}`}
           >
             {o.label}
@@ -311,9 +324,7 @@ export function Ring({
           strokeDasharray={`${c * ratio} ${c}`}
         />
       </svg>
-      {children ? (
-        <span className="tnum absolute text-[11px] leading-none">{children}</span>
-      ) : null}
+      {children ? <span className="tnum absolute text-[11px] leading-none">{children}</span> : null}
     </div>
   );
 }
@@ -522,7 +533,7 @@ export function MetricValue({
   /** Изменение к прошлому периоду. Знак определяет стрелку. */
   delta?: number;
   /** Куда «хорошо»: рост или снижение. По умолчанию рост. */
-  deltaGood?: 'up' | 'down';
+  deltaGood?: 'up' | 'down' | 'neutral';
   label?: ReactNode;
   className?: string;
 }) {
@@ -533,7 +544,7 @@ export function MetricValue({
     sm: 'text-caption',
   };
   const arrow = delta == null || delta === 0 ? null : delta > 0 ? '↑' : '↓';
-  const good = delta == null || delta === 0 ? null : (delta > 0) === ((deltaGood ?? 'up') === 'up');
+  const good = delta == null || delta === 0 ? null : delta > 0 === ((deltaGood ?? 'up') === 'up');
 
   return (
     <div className={className}>
@@ -542,7 +553,9 @@ export function MetricValue({
         <span className={`tnum ${sizes[size]}`}>{value}</span>
         {unit ? <span className="text-caption font-normal text-muted">{unit}</span> : null}
         {arrow ? (
-          <span className={`tnum text-caption ${good ? 'text-good' : 'text-over'}`}>
+          <span
+            className={`tnum text-caption ${deltaGood === 'neutral' ? 'text-muted' : good ? 'text-good' : 'text-over'}`}
+          >
             <span aria-hidden="true">{arrow}</span> {Math.abs(delta as number)}
           </span>
         ) : null}

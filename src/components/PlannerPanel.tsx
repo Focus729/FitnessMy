@@ -2,12 +2,18 @@
  * Планировщик меню и список покупок — раздел 9.5.
  * Детерминированный алгоритм, без AI.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
-import { useQueryWithDefault } from '@/data/repositories/hooks';
+import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
+import { useRouteState } from '@/app/navigation';
 import { useSettings } from '@/app/hooks';
-import { buildShoppingList, planWeek, type PlanCandidate, type PlanResult } from '@/domain/nutrition/planner';
+import {
+  buildShoppingList,
+  planWeek,
+  type PlanCandidate,
+  type PlanResult,
+} from '@/domain/nutrition/planner';
 import { computeDish, computeRecipe } from '@/domain/nutrition/recipe';
 import type { Nutrients } from '@/domain/model';
 import { dateRange, startOfWeek, today as todayFn, toLocalTime } from '@/lib/date';
@@ -19,15 +25,66 @@ const EMPTY: never[] = [];
 
 export function PlannerPanel() {
   const { t } = useTranslation();
+  const settings = useSettings();
+  const [date, setDate] = useRouteState('week', startOfWeek(todayFn(), settings.firstDayOfWeek));
+  const weekStart = startOfWeek(date, settings.firstDayOfWeek);
+  const saved = useQuery(
+    async (r) => ({
+      weekStart,
+      draft: await r.meta.get<PlannerDraft>(`planner.${weekStart}`),
+    }),
+    [weekStart],
+  );
+  return (
+    <div className="space-y-4">
+      <label className="text-caption">
+        {t('food.planWeek')}{' '}
+        <input
+          type="date"
+          value={weekStart}
+          onChange={(e) => {
+            if (e.target.value) setDate(e.target.value);
+          }}
+        />
+      </label>
+      {saved?.weekStart === weekStart ? (
+        <PlannerWeek key={weekStart} weekStart={weekStart} initial={saved.draft} />
+      ) : (
+        <p>{t('common.loading')}</p>
+      )}
+    </div>
+  );
+}
+
+interface PlannerDraft {
+  selected: Record<string, number>;
+  plan: PlanResult | null;
+  checked: Record<string, boolean>;
+}
+
+function PlannerWeek({ weekStart, initial }: { weekStart: string; initial?: PlannerDraft }) {
+  const { t } = useTranslation();
   const repos = useRepos();
   const settings = useSettings();
-  const [selected, setSelected] = useState<Record<string, number>>({});
-  const [plan, setPlan] = useState<PlanResult | null>(null);
+  const [selected, setSelected] = useState<Record<string, number>>(initial?.selected ?? {});
+  const [plan, setPlan] = useState<PlanResult | null>(initial?.plan ?? null);
   const [view, setView] = useState<'plan' | 'shopping'>('plan');
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [checked, setChecked] = useState<Record<string, boolean>>(initial?.checked ?? {});
+  const [failed, setFailed] = useState(false);
+  const [applied, setApplied] = useState<string | null>(null);
+  useEffect(() => {
+    void repos.meta
+      .set(`planner.${weekStart}`, { selected, plan, checked })
+      .then(() => setFailed(false))
+      .catch(() => setFailed(true));
+  }, [repos, weekStart, selected, plan, checked]);
 
   const candidates = useQueryWithDefault(async (r) => {
-    const [dishes, recipes, foods] = await Promise.all([r.dishes.all(), r.recipes.all(), r.foods.all()]);
+    const [dishes, recipes, foods] = await Promise.all([
+      r.dishes.all(),
+      r.recipes.all(),
+      r.foods.all(),
+    ]);
     const byId = new Map(foods.map((f) => [f.id, f]));
     const out: PlanCandidate[] = [];
 
@@ -90,7 +147,6 @@ export function PlannerPanel() {
     [candidates, selected],
   );
 
-  const weekStart = startOfWeek(todayFn(), settings.firstDayOfWeek);
   const dates = dateRange(weekStart, dateRange(weekStart, weekStart)[0] as string).length
     ? Array.from({ length: 7 }, (_, i) => addDaysLocal(weekStart, i))
     : [];
@@ -102,7 +158,10 @@ export function PlannerPanel() {
         slots: settings.mealSlots
           .slice()
           .sort((a, b) => a.order - b.order)
-          .map((s) => ({ mealSlotId: s.id, share: s.targetKcalShare ?? 1 / settings.mealSlots.length })),
+          .map((s) => ({
+            mealSlotId: s.id,
+            share: s.targetKcalShare ?? 1 / settings.mealSlots.length,
+          })),
         candidates: pool,
         targets: {
           kcal: settings.targets.kcal,
@@ -117,17 +176,26 @@ export function PlannerPanel() {
   const applyDay = async (dayIndex: number) => {
     const day = plan?.days[dayIndex];
     if (!day) return;
-    for (const slot of day.slots) {
-      await repos.diary.create({
-        date: day.date,
-        time: toLocalTime(),
-        mealSlotId: slot.mealSlotId,
-        kind: slot.kind === 'food' ? 'food' : slot.kind,
-        refId: slot.refId,
-        grams: slot.grams,
-        nutrients: slot.nutrients,
-        inputMethod: 'plan',
-      });
+    try {
+      await repos.diary.addBatch(
+        day.slots.map((slot, index) => {
+          const id = `menu-${day.date}-${index}-${slot.mealSlotId}`;
+          return {
+            id,
+            date: day.date,
+            time: toLocalTime(),
+            mealSlotId: slot.mealSlotId,
+            kind: slot.kind === 'food' ? 'food' : slot.kind,
+            refId: slot.refId,
+            grams: slot.grams,
+            nutrients: slot.nutrients,
+            inputMethod: 'plan',
+          };
+        }),
+      );
+      setApplied(day.date);
+    } catch {
+      setFailed(true);
     }
   };
 
@@ -139,6 +207,12 @@ export function PlannerPanel() {
 
   return (
     <div className="space-y-4">
+      {failed ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      {applied ? (
+        <p role="status">
+          {dateShort(applied)} · {t('common.done')}
+        </p>
+      ) : null}
       <div>
         <div className="text-label uppercase text-muted">{t('food.planPool')}</div>
         <ul className="mt-2 divide-y divide-hairline">
@@ -149,7 +223,9 @@ export function PlannerPanel() {
                 value={selected[c.refId] ?? 0}
                 min={0}
                 max={7}
-                ariaLabel={t('food.planMaxPerWeek', { count: selected[c.refId] ?? 0 })}
+                ariaLabel={t('food.planMaxPerWeek', {
+                  count: selected[c.refId] ?? 0,
+                })}
                 onChange={(v) => setSelected((s) => ({ ...s, [c.refId]: v }))}
               />
             </li>
@@ -177,15 +253,20 @@ export function PlannerPanel() {
             onChange={setView}
           />
 
-          {view === 'plan' ? (
-            <ul className="space-y-3">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ul
+              aria-label={t('food.planTitle')}
+              className={`space-y-3 ${view === 'plan' ? '' : 'hidden lg:block'}`}
+            >
               {plan.days.map((day, i) => (
                 <li key={day.date}>
                   <div className="flex items-baseline justify-between border-b border-hairline pb-1">
                     <span className="text-label uppercase text-muted">{dateShort(day.date)}</span>
                     <span className="tnum text-caption text-muted">
                       {num(Math.round(day.totals.kcal))} ·{' '}
-                      {t('food.planDeviation', { value: num(day.kcalDeviation * 100, 1) })}
+                      {t('food.planDeviation', {
+                        value: num(day.kcalDeviation * 100, 1),
+                      })}
                     </span>
                   </div>
                   <ul>
@@ -204,8 +285,10 @@ export function PlannerPanel() {
                 </li>
               ))}
             </ul>
-          ) : (
-            <ul className="divide-y divide-hairline">
+            <ul
+              aria-label={t('food.shoppingList')}
+              className={`divide-y divide-hairline ${view === 'shopping' ? '' : 'hidden lg:block'}`}
+            >
               {shopping.map((item) => (
                 <li key={item.name}>
                   <label className="flex min-h-touch items-center gap-3 py-2">
@@ -213,7 +296,10 @@ export function PlannerPanel() {
                       type="checkbox"
                       checked={checked[item.name] ?? false}
                       onChange={(e) =>
-                        setChecked((c) => ({ ...c, [item.name]: e.target.checked }))
+                        setChecked((c) => ({
+                          ...c,
+                          [item.name]: e.target.checked,
+                        }))
                       }
                     />
                     <span className="min-w-0 flex-1">
@@ -229,11 +315,13 @@ export function PlannerPanel() {
                 </li>
               ))}
             </ul>
-          )}
+          </div>
 
           <p className="text-caption text-muted">
-            {t('food.planDeviation', { value: num(plan.worstDeviation * 100, 1) })} ·{' '}
-            {percent(plan.worstDeviation, 1)}
+            {t('food.planDeviation', {
+              value: num(plan.worstDeviation * 100, 1),
+            })}{' '}
+            · {percent(plan.worstDeviation, 1)}
           </p>
         </>
       ) : null}

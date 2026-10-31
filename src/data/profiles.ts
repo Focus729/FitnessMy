@@ -9,7 +9,7 @@
  * НЕ шифрование. Это честно написано в интерфейсе (2.1).
  */
 import { uuid } from '@/lib/id';
-import { deleteDb } from '@/data/db/schema';
+import { deleteDb, recoveryDb } from '@/data/db/schema';
 
 const REGISTRY_KEY = 'lenta.profiles.v1';
 const ACTIVE_KEY = 'lenta.activeProfile.v1';
@@ -65,6 +65,8 @@ export function removeProfile(id: string): void {
  */
 export async function destroyProfile(id: string): Promise<void> {
   await deleteDb(id);
+  await recoveryDb.snapshots.delete(id);
+  localStorage.removeItem(`lenta.backupSnoozeUntil.${id}`);
   removeProfile(id);
 }
 

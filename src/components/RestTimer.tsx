@@ -8,36 +8,45 @@ import { useTranslation } from 'react-i18next';
 import { durationShort } from '@/lib/format';
 
 export function RestTimer({
-  seconds,
+  deadline,
+  onDeadlineChange,
   vibrate,
   sound,
   onClose,
 }: {
-  seconds: number;
+  deadline: number;
+  onDeadlineChange: (deadline: number) => void;
   vibrate: boolean;
   sound: boolean;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [left, setLeft] = useState(seconds);
+  const [now, setNow] = useState(Date.now());
+  const left = Math.max(0, Math.ceil((deadline - now) / 1000));
   const finished = useRef(false);
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
-    const id = window.setInterval(() => setLeft((v) => v - 1), 1000);
+    const id = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
     if (left > 0 || finished.current) return;
     finished.current = true;
-    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([120, 80, 120]);
+    if (vibrate && typeof navigator !== 'undefined' && navigator.vibrate)
+      navigator.vibrate([120, 80, 120]);
     if (sound) beep();
-    const id = window.setTimeout(onClose, 1500);
+    const id = window.setTimeout(() => close.current(), 1500);
     return () => window.clearTimeout(id);
-  }, [left, vibrate, sound, onClose]);
+  }, [left, vibrate, sound]);
 
   return (
-    <div className="fixed inset-x-0 top-0 z-40 mx-auto flex max-w-lg items-center gap-2 border-b border-hairline bg-surface px-4 py-2">
+    <div
+      role="timer"
+      className="sticky top-0 z-40 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-accent bg-surface px-4 py-2"
+    >
       <span className="text-label uppercase text-muted">{t('gym.restTimer')}</span>
       <span className="tnum flex-1 text-[28px] leading-none font-medium">
         {left > 0 ? durationShort(left) : t('gym.restDone')}
@@ -45,18 +54,22 @@ export function RestTimer({
       <button
         type="button"
         className="tappable justify-center rounded-lg border border-hairline px-2 text-caption"
-        onClick={() => setLeft((v) => Math.max(0, v - 15))}
+        onClick={() => onDeadlineChange(Math.max(Date.now(), deadline - 15000))}
       >
         {t('gym.restMinus')}
       </button>
       <button
         type="button"
         className="tappable justify-center rounded-lg border border-hairline px-2 text-caption"
-        onClick={() => setLeft((v) => v + 15)}
+        onClick={() => onDeadlineChange(Math.max(Date.now(), deadline) + 15000)}
       >
         {t('gym.restPlus')}
       </button>
-      <button type="button" className="tappable justify-center px-2 text-caption text-accent" onClick={onClose}>
+      <button
+        type="button"
+        className="tappable justify-center px-2 text-caption text-accent"
+        onClick={onClose}
+      >
         {t('gym.restSkip')}
       </button>
     </div>

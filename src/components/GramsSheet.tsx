@@ -6,7 +6,7 @@
  *   • пищевая ценность пересчитывается на лету;
  *   • кнопка сохранения фиксирована внизу, доступна одной рукой.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Food, MealSlot, Nutrients, Serving } from '@/domain/model';
 import { scale } from '@/domain/nutrition/nutrients';
@@ -14,6 +14,7 @@ import { num } from '@/lib/format';
 import { Button, NumberField, Segmented, Sheet } from '@/design-system/primitives';
 
 export interface GramsTarget {
+  id?: string;
   name: string;
   per100: Nutrients;
   servings: Serving[];
@@ -37,25 +38,40 @@ export function GramsSheet({
   slots: MealSlot[];
   slotId: string;
   onSlotChange: (id: string) => void;
-  onSubmit: (grams: number, servingId?: string) => void;
+  onSubmit: (grams: number, servingId?: string) => void | Promise<void>;
   slotLabel: (slot: MealSlot) => string;
 }) {
   const { t } = useTranslation();
   const initial = target?.lastGrams ?? target?.servings.find((s) => s.isDefault)?.grams ?? 100;
   const [grams, setGrams] = useState<number | ''>(initial);
-  const [key, setKey] = useState(target?.name ?? '');
+  const [key, setKey] = useState(target?.id ?? target?.name ?? '');
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
 
   // Сброс значения при смене продукта — без useEffect, по производному ключу.
-  if (target && key !== target.name) {
-    setKey(target.name);
+  if (target && key !== (target.id ?? target.name)) {
+    setKey(target.id ?? target.name);
     setGrams(initial);
   }
 
   const value = grams === '' ? 0 : grams;
-  const nutrients = useMemo(
-    () => (target ? scale(target.per100, value) : null),
-    [target, value],
-  );
+  const save = async () => {
+    if (saving.current || value <= 0 || !Number.isFinite(value)) return;
+    saving.current = true;
+    setBusy(true);
+    setError(false);
+    try {
+      await onSubmit(value);
+      onClose();
+    } catch {
+      setError(true);
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+  const nutrients = useMemo(() => (target ? scale(target.per100, value) : null), [target, value]);
 
   if (!target) return null;
   const unit = target.basis === 'volume' ? t('units.ml') : t('units.g');
@@ -63,22 +79,19 @@ export function GramsSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!saving.current) onClose();
+      }}
+      dirty={grams !== initial}
+      onSave={save}
       title={target.name}
       footer={
-        <Button
-          variant="primary"
-          full
-          disabled={value <= 0}
-          onClick={() => {
-            onSubmit(value);
-            onClose();
-          }}
-        >
+        <Button variant="primary" full disabled={value <= 0 || busy} onClick={() => void save()}>
           {t('common.save')}
         </Button>
       }
     >
+      {error ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       <div className="mt-2">
         <NumberField
           value={grams}

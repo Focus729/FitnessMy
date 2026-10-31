@@ -48,7 +48,10 @@ export function SwipeToDelete({
           setOffset(Math.min(0, e.clientX - startX.current));
         }}
         onPointerUp={end}
-        onPointerCancel={end}
+        onPointerCancel={() => {
+          startX.current = null;
+          setOffset(0);
+        }}
       >
         {children}
       </div>
@@ -59,7 +62,7 @@ export function SwipeToDelete({
         aria-label={deleteLabel}
         title={t('gym.swipeToDelete')}
         onClick={onDelete}
-        className="sr-only focus:not-sr-only focus:absolute focus:inset-y-0 focus:right-0 focus:px-3 focus:text-caption focus:text-over"
+        className="tappable ml-auto justify-center px-2 text-caption text-over"
       >
         {deleteLabel}
       </button>

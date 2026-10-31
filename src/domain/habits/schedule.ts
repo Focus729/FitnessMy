@@ -38,7 +38,7 @@ function matchesSchedule(
     case 'timesPerWeek': {
       const weekStart = startOfWeek(date, firstDayOfWeek);
       const done = logsThisWeek.filter(
-        (l) => l.completed && l.date >= weekStart && l.date <= date,
+        (l) => l.completed && l.date >= weekStart && l.date < date,
       ).length;
       return done < schedule.times;
     }

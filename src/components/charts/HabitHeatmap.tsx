@@ -6,13 +6,9 @@
 import { useTranslation } from 'react-i18next';
 import { dateShort } from '@/lib/format';
 
-export function HabitHeatmap({
-  data,
-}: {
-  data: { date: string; ratio: number | null }[];
-}) {
+export function HabitHeatmap({ data }: { data: { date: string; ratio: number | null }[] }) {
   const { t } = useTranslation();
-  if (data.length === 0) {
+  if (!data.some((day) => day.ratio != null)) {
     return <p className="py-6 text-caption text-muted">{t('progress.noData')}</p>;
   }
 

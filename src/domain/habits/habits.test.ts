@@ -3,7 +3,10 @@ import { computeStreak, dayStatusFromFlag, dayStatusFromHabits, MAX_FREEZES } fr
 import { canEditRetroactively, isHabitDone, isScheduledOn } from './schedule';
 import type { HabitLog } from '@/domain/model';
 
-const day = (date: string, status: 'done' | 'missed' | 'notScheduled') => ({ date, status });
+const day = (date: string, status: 'done' | 'missed' | 'notScheduled') => ({
+  date,
+  status,
+});
 
 describe('серии и заморозки', () => {
   it('серия растёт за каждый выполненный день', () => {
@@ -84,35 +87,47 @@ describe('расписания привычек', () => {
   const created = '2026-07-01T00:00:00.000Z';
 
   it('ежедневная запланирована всегда', () => {
-    expect(isScheduledOn({ schedule: { type: 'daily' }, createdAt: created }, '2026-07-05')).toBe(true);
+    expect(isScheduledOn({ schedule: { type: 'daily' }, createdAt: created }, '2026-07-05')).toBe(
+      true,
+    );
   });
 
   it('по дням недели', () => {
-    const habit = { schedule: { type: 'weekdays' as const, days: [1, 3, 5] }, createdAt: created };
+    const habit = {
+      schedule: { type: 'weekdays' as const, days: [1, 3, 5] },
+      createdAt: created,
+    };
     // 2026-07-06 — понедельник
     expect(isScheduledOn(habit, '2026-07-06')).toBe(true);
     expect(isScheduledOn(habit, '2026-07-07')).toBe(false);
   });
 
   it('каждые N дней — от даты создания', () => {
-    const habit = { schedule: { type: 'everyNDays' as const, n: 3 }, createdAt: created };
+    const habit = {
+      schedule: { type: 'everyNDays' as const, n: 3 },
+      createdAt: created,
+    };
     expect(isScheduledOn(habit, '2026-07-01')).toBe(true);
     expect(isScheduledOn(habit, '2026-07-04')).toBe(true);
     expect(isScheduledOn(habit, '2026-07-05')).toBe(false);
   });
 
   it('N раз в неделю: доступна, пока квота не выбрана', () => {
-    const habit = { schedule: { type: 'timesPerWeek' as const, times: 2 }, createdAt: created };
-    const logs: HabitLog[] = [
-      log('2026-07-06'),
-      log('2026-07-07'),
-    ];
+    const habit = {
+      schedule: { type: 'timesPerWeek' as const, times: 2 },
+      createdAt: created,
+    };
+    const logs: HabitLog[] = [log('2026-07-06'), log('2026-07-07')];
     expect(isScheduledOn(habit, '2026-07-08', [])).toBe(true);
     expect(isScheduledOn(habit, '2026-07-08', logs)).toBe(false);
+    // The last scheduled occurrence must remain visible after completing it.
+    expect(isScheduledOn(habit, '2026-07-07', logs)).toBe(true);
   });
 
   it('до даты создания привычка не запланирована', () => {
-    expect(isScheduledOn({ schedule: { type: 'daily' }, createdAt: created }, '2026-06-30')).toBe(false);
+    expect(isScheduledOn({ schedule: { type: 'daily' }, createdAt: created }, '2026-06-30')).toBe(
+      false,
+    );
   });
 
   it('привычка с целевым значением требует достижения значения', () => {

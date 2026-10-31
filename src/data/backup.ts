@@ -5,8 +5,10 @@
  * корректно отказывать при несовпадении с понятным сообщением.
  * Слияние: побеждает запись с более поздним updatedAt, удалённые не воскресают.
  */
-import { openDb, EXPORTABLE_TABLES, type ExportableTable } from '@/data/db/schema';
+import { openDb, recoveryDb, EXPORTABLE_TABLES, type ExportableTable } from '@/data/db/schema';
 import type { ProfileRef } from '@/data/profiles';
+import { getProfileRef } from '@/data/profiles';
+import { validBackupPayload, validReferences } from './backupValidation';
 
 export const BACKUP_FORMAT = 'lenta-backup';
 export const BACKUP_VERSION = 1;
@@ -25,6 +27,7 @@ export interface ImportPreview {
   perTable: Record<string, { added: number; updated: number; unchanged: number }>;
   totalAdded: number;
   totalUpdated: number;
+  totalRemoved: number;
   blobs: number;
   exportedAt: string;
   profileName: string;
@@ -33,7 +36,10 @@ export interface ImportPreview {
 export type ImportMode = 'replace' | 'merge' | 'preview';
 
 export class BackupFormatError extends Error {
-  constructor(public readonly reason: 'format' | 'version' | 'parse', public readonly detail?: string) {
+  constructor(
+    public readonly reason: 'format' | 'version' | 'parse',
+    public readonly detail?: string,
+  ) {
     super(reason);
     this.name = 'BackupFormatError';
   }
@@ -45,11 +51,15 @@ export async function exportBackup(profile: ProfileRef): Promise<BackupFile> {
   const db = openDb(profile.id);
   const tables: BackupFile['tables'] = {};
 
-  for (const name of EXPORTABLE_TABLES) {
-    tables[name] = await db.table(name).toArray();
-  }
-
-  const blobRows = await db.blobs.toArray();
+  const blobRows = await db.transaction(
+    'r',
+    [...EXPORTABLE_TABLES.map((name) => db.table(name)), db.blobs],
+    async () => {
+      for (const name of EXPORTABLE_TABLES)
+        tables[name] = redactCredentials(await db.table(name).toArray());
+      return db.blobs.toArray();
+    },
+  );
   const blobs = await Promise.all(
     blobRows.map(async (b) => ({
       id: b.id,
@@ -96,8 +106,18 @@ export function parseBackup(text: string): BackupFile {
   }
   const file = parsed as Partial<BackupFile>;
   if (file?.format !== BACKUP_FORMAT) throw new BackupFormatError('format', String(file?.format));
-  if (file?.version !== BACKUP_VERSION) throw new BackupFormatError('version', String(file?.version));
+  if (file?.version !== BACKUP_VERSION)
+    throw new BackupFormatError('version', String(file?.version));
+  if (!validBackupPayload(file, EXPORTABLE_TABLES)) throw new BackupFormatError('parse');
   return file as BackupFile;
+}
+
+function redactCredentials<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (key, item: unknown) =>
+      /^(apiKey|pinHash|accessToken|refreshToken)$/i.test(key) ? null : item,
+    ),
+  ) as T;
 }
 
 interface Versioned {
@@ -112,16 +132,25 @@ function keyOf(row: Versioned, table: string): string | undefined {
 }
 
 /** Предпросмотр: сколько записей будет добавлено или изменено, без применения. */
-export async function previewImport(profileId: string, file: BackupFile): Promise<ImportPreview> {
+export async function previewImport(
+  profileId: string,
+  file: BackupFile,
+  mode: 'replace' | 'merge' = 'merge',
+): Promise<ImportPreview> {
+  if (file.format !== BACKUP_FORMAT) throw new BackupFormatError('format');
+  if (file.version !== BACKUP_VERSION) throw new BackupFormatError('version');
+  if (!validBackupPayload(file, EXPORTABLE_TABLES)) throw new BackupFormatError('parse');
   const db = openDb(profileId);
   const perTable: ImportPreview['perTable'] = {};
   let totalAdded = 0;
   let totalUpdated = 0;
+  let totalRemoved = 0;
 
   for (const name of EXPORTABLE_TABLES) {
     const incoming = (file.tables[name] ?? []) as Versioned[];
-    if (incoming.length === 0) continue;
     const existing = (await db.table(name).toArray()) as Versioned[];
+    const incomingKeys = new Set(incoming.map((r) => keyOf(r, name)));
+    totalRemoved += existing.filter((r) => !incomingKeys.has(keyOf(r, name))).length;
     const byKey = new Map(existing.map((r) => [keyOf(r, name), r]));
 
     let added = 0;
@@ -130,7 +159,10 @@ export async function previewImport(profileId: string, file: BackupFile): Promis
     for (const row of incoming) {
       const current = byKey.get(keyOf(row, name));
       if (!current) added++;
-      else if (isNewer(row, current)) updated++;
+      else if (
+        mode === 'replace' ? JSON.stringify(row) !== JSON.stringify(current) : isNewer(row, current)
+      )
+        updated++;
       else unchanged++;
     }
     perTable[name] = { added, updated, unchanged };
@@ -142,6 +174,7 @@ export async function previewImport(profileId: string, file: BackupFile): Promis
     perTable,
     totalAdded,
     totalUpdated,
+    totalRemoved,
     blobs: file.blobs?.length ?? 0,
     exportedAt: file.exportedAt,
     profileName: file.profile?.name ?? '',
@@ -164,44 +197,89 @@ export async function applyImport(
   file: BackupFile,
   mode: 'replace' | 'merge',
 ): Promise<ImportPreview> {
-  const preview = await previewImport(profileId, file);
+  const preview = await previewImport(profileId, file, mode);
   const db = openDb(profileId);
+  // Convert blobs before opening a transaction; decoding failure cannot clear data.
+  const blobs = file.blobs.map((b) => ({
+    ...b,
+    data: base64ToBlob(b.data, b.mime),
+  }));
+  const ref = getProfileRef(profileId) ?? {
+    id: profileId,
+    name: profileId,
+    tint: 'a' as const,
+    createdAt: new Date().toISOString(),
+  };
+  const recovery = await exportBackup(ref);
+  // Failure to retain the recovery copy prevents replacement.
+  await recoveryDb.snapshots.put({ profileId, backup: recovery });
 
-  for (const name of EXPORTABLE_TABLES) {
-    const incoming = (file.tables[name] ?? []) as Versioned[];
-    const table = db.table(name);
-
-    if (mode === 'replace') {
-      await table.clear();
-      if (incoming.length) await table.bulkPut(incoming);
-      continue;
-    }
-
-    if (incoming.length === 0) continue;
-    const existing = (await table.toArray()) as Versioned[];
-    const byKey = new Map(existing.map((r) => [keyOf(r, name), r]));
-    const toPut: Versioned[] = [];
-
-    for (const row of incoming) {
-      const current = byKey.get(keyOf(row, name));
-      if (!current) {
-        toPut.push(row);
-        continue;
+  await db.transaction(
+    'rw',
+    [...EXPORTABLE_TABLES.map((name) => db.table(name)), db.blobs],
+    async () => {
+      const effective: Record<string, unknown[]> = {};
+      for (const name of EXPORTABLE_TABLES) {
+        const incoming = (file.tables[name] ?? []) as Versioned[];
+        if (mode === 'replace') effective[name] = incoming;
+        else {
+          const merged = new Map(
+            ((await db.table(name).toArray()) as Versioned[]).map((row) => [keyOf(row, name), row]),
+          );
+          for (const row of incoming) {
+            const current = merged.get(keyOf(row, name));
+            if (!current || isNewer(row, current)) merged.set(keyOf(row, name), row);
+          }
+          effective[name] = [...merged.values()];
+        }
       }
-      // Удалённые не воскресают: если текущая запись удалена позже — оставляем её.
-      if (isNewer(row, current)) toPut.push(row);
-    }
-    if (toPut.length) await table.bulkPut(toPut);
-  }
+      if (!validReferences(effective))
+        throw new BackupFormatError('parse', 'Unresolved references');
+      for (const name of EXPORTABLE_TABLES) {
+        const incoming = redactCredentials(file.tables[name] ?? []).map((row) =>
+          name === 'habits'
+            ? {
+                ...(row as object),
+                polarity: (row as { polarity?: string }).polarity ?? 'build',
+              }
+            : row,
+        ) as Versioned[];
+        const table = db.table(name);
 
-  if (file.blobs?.length) {
-    if (mode === 'replace') await db.blobs.clear();
-    for (const b of file.blobs) {
-      await db.blobs.put({ id: b.id, mime: b.mime, data: base64ToBlob(b.data, b.mime), createdAt: b.createdAt });
-    }
-  }
+        if (mode === 'replace') {
+          await table.clear();
+          if (incoming.length) await table.bulkPut(incoming);
+          continue;
+        }
+
+        if (incoming.length === 0) continue;
+        const existing = (await table.toArray()) as Versioned[];
+        const byKey = new Map(existing.map((r) => [keyOf(r, name), r]));
+        const toPut: Versioned[] = [];
+
+        for (const row of incoming) {
+          const current = byKey.get(keyOf(row, name));
+          if (!current) {
+            toPut.push(row);
+            continue;
+          }
+          // Удалённые не воскресают: если текущая запись удалена позже — оставляем её.
+          if (isNewer(row, current)) toPut.push(row);
+        }
+        if (toPut.length) await table.bulkPut(toPut);
+      }
+
+      if (mode === 'replace') await db.blobs.clear();
+      if (blobs.length) await db.blobs.bulkPut(blobs);
+    },
+  );
 
   return preview;
+}
+
+export async function getRecoveryBackup(profileId: string): Promise<BackupFile | undefined> {
+  const row = await recoveryDb.snapshots.get(profileId);
+  return row ? parseBackup(JSON.stringify(row.backup)) : undefined;
 }
 
 /* ─────────────────────────── Кодирование двоичных данных ───────────────────── */
@@ -234,7 +312,11 @@ export function needsBackupReminder(lastBackupAt: string | undefined, now = new 
 }
 
 /** Объём данных профиля — показывается в настройках (2.3, пункт 4). */
-export async function estimateStorage(): Promise<{ usageBytes: number; quotaBytes: number; persisted: boolean }> {
+export async function estimateStorage(): Promise<{
+  usageBytes: number;
+  quotaBytes: number;
+  persisted: boolean;
+}> {
   const persisted =
     typeof navigator !== 'undefined' && navigator.storage?.persisted
       ? await navigator.storage.persisted()
@@ -256,6 +338,10 @@ export async function estimateStorage(): Promise<{ usageBytes: number; quotaByte
  */
 export async function requestPersistentStorage(): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
-  if (await navigator.storage.persisted()) return true;
-  return navigator.storage.persist();
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return false;
+  }
 }

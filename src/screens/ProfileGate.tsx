@@ -8,13 +8,13 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createProfile, verifyPin } from '@/data/profiles';
 import { useSession, applyTheme } from '@/app/store';
-import { Button, NumberField, TextField } from '@/design-system/primitives';
+import { Button, TextField } from '@/design-system/primitives';
 
 export function ProfileGate() {
   const { t } = useTranslation();
   const { profiles, activeProfileId, select, unlock, refresh, leave } = useSession();
   const [newName, setNewName] = useState('');
-  const [pin, setPin] = useState<number | ''>('');
+  const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
 
   useEffect(() => {
@@ -37,13 +37,14 @@ export function ProfileGate() {
         <h1 className="text-title">{t('profiles.pinTitle')}</h1>
         <p className="mt-1 text-caption text-muted">{pending.name}</p>
         <div className="mt-6 w-full">
-          <NumberField
+          <TextField
+            type="password"
+            inputMode="numeric"
             value={pin}
             onChange={(v) => {
-              setPin(v);
+              setPin(v.replace(/\D/g, '').slice(0, 6));
               setPinError(false);
             }}
-            big
             autoFocus
             maxLength={6}
             aria-label={t('profiles.pinTitle')}

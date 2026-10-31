@@ -8,6 +8,7 @@ import {
   getProfileRef,
   listProfiles,
   setActiveProfile,
+  clearActiveProfile,
   type ProfileRef,
 } from '@/data/profiles';
 
@@ -42,10 +43,17 @@ export const useSession = create<SessionState>((set) => ({
   select: (id) => {
     setActiveProfile(id);
     const ref = getProfileRef(id);
-    set({ activeProfileId: id, unlocked: !ref?.pinHash, profiles: listProfiles() });
+    set({
+      activeProfileId: id,
+      unlocked: !ref?.pinHash,
+      profiles: listProfiles(),
+    });
   },
   unlock: () => set({ unlocked: true }),
-  leave: () => set({ unlocked: false, activeProfileId: null }),
+  leave: () => {
+    clearActiveProfile();
+    set({ unlocked: false, activeProfileId: null });
+  },
 }));
 
 /** Применяет тему и оттенок профиля к корню документа (18.2, раздел 23). */

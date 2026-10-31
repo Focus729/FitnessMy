@@ -1,16 +1,4 @@
-/**
- * Главный экран — раздел 13. РОВНО пять блоков, ни одним больше.
- * Это предмет отдельного контроля при код-ревью (см. CONTRIBUTING.md).
- *
- *   лента дня (18.4)
- *   1 осталось калорий
- *   2 полосы БЖУ + клетчатка
- *   3 вода
- *   4 сон и шаги      — скрывается целиком, если выключено в настройках
- *   5 привычки        — скрывается целиком, если привычек нет
- *   строка тренировки — только если она запланирована или не завершена
- *   полоса опыта 2 px — исчезает при выключенной игровой механике
- */
+/** Training-first overview, approved direction B. See DESIGN.md. */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +9,8 @@ import { award } from '@/app/gamification';
 import { levelProgress } from '@/domain/gamification/xp';
 import { isHabitDone, isScheduledOn, canEditRetroactively } from '@/domain/habits/schedule';
 import { timeLabel } from '@/domain/nutrition/fasting';
+import { startOfWeek } from '@/lib/date';
+import { useSaveAction } from '@/app/useSaveAction';
 import { dateShort, num } from '@/lib/format';
 import { Bar, Button, MetricValue, Panel, Ring } from '@/design-system/primitives';
 import { Ribbon, RibbonScale } from '@/design-system/Ribbon';
@@ -34,10 +24,14 @@ export function TodayScreen() {
   const date = useToday();
   const settings = useSettings();
   const day = useDaySummary(date);
-  const ribbon = useRibbon(date, settings.fasting.enabled ? settings.fasting.windowHours : undefined);
+  const ribbon = useRibbon(
+    date,
+    settings.fasting.enabled ? settings.fasting.windowHours : undefined,
+  );
 
   const [waterOpen, setWaterOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const starting = useSaveAction();
 
   const game = useQuery((r) => r.game.get());
   const sleep = useQuery((r) => r.sleep.byDate(date), [date]);
@@ -48,13 +42,34 @@ export function TodayScreen() {
   const habitsToday = useQuery(
     async (r) => {
       const [habits, logs] = await Promise.all([r.habits.all(), r.habitLogs.byDate(date)]);
-      const active = habits.filter((h) => !h.archived).sort((a, b) => a.order - b.order);
-      const weekLogs = await r.habitLogs.byDateRange(date.slice(0, 8) + '01', date);
+      const active = habits
+        .filter((h) => !h.archived && h.polarity !== 'quit')
+        .sort((a, b) => a.order - b.order);
+      const weekLogs = await r.habitLogs.byDateRange(
+        startOfWeek(date, settings.firstDayOfWeek),
+        date,
+      );
       return active
-        .filter((h) => isScheduledOn(h, date, weekLogs.filter((l) => l.habitId === h.id), settings.firstDayOfWeek))
-        .map((h) => ({ habit: h, done: isHabitDone(h, logs.find((l) => l.habitId === h.id)) }));
+        .filter((h) =>
+          isScheduledOn(
+            h,
+            date,
+            weekLogs.filter((l) => l.habitId === h.id),
+            settings.firstDayOfWeek,
+          ),
+        )
+        .map((h) => ({
+          habit: h,
+          done: isHabitDone(
+            h,
+            logs.find((l) => l.habitId === h.id),
+          ),
+        }));
     },
     [date, settings.firstDayOfWeek],
+  );
+  const quitHabits = useQuery(async (r) =>
+    (await r.habits.all()).filter((habit) => !habit.archived && habit.polarity === 'quit'),
   );
 
   const targets = settings.targets;
@@ -69,7 +84,43 @@ export function TodayScreen() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="today-grid space-y-5">
+      <section className="training-hero">
+        <p className="text-label uppercase text-muted">
+          {t(unfinished ? 'today.resumeWorkout' : 'gym.plan')}
+        </p>
+        <h1>{unfinished?.name || nextPlan?.name || t('gym.startEmpty')}</h1>
+        {nextPlan && !unfinished ? (
+          <p className="mb-4 text-caption text-muted">{dateShort(nextPlan.plannedDate)}</p>
+        ) : null}
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="primary"
+            disabled={starting.busy}
+            onClick={() =>
+              void starting.run(async () => {
+                if (unfinished) {
+                  navigate(`/workout/${unfinished.id}`);
+                  return;
+                }
+                if (nextPlan) {
+                  navigate(`/gym?section=plan&date=${nextPlan.plannedDate}`);
+                  return;
+                }
+                const workout = await repos.workouts.startFree(t('gym.startEmpty'));
+                navigate(`/workout/${workout.id}`);
+              })
+            }
+          >
+            {t(unfinished ? 'common.continue' : nextPlan ? 'today.startWorkout' : 'gym.startEmpty')}
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>{t('today.addFood')}</Button>
+          <Button variant="ghost" onClick={() => navigate('/body?section=weight')}>
+            {t('body.weightAdd')}
+          </Button>
+        </div>
+        {starting.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      </section>
       {/* Сигнатурный элемент — лента дня */}
       <div aria-label={t('today.ribbonLabel')}>
         {ribbon ? (
@@ -171,7 +222,7 @@ export function TodayScreen() {
           {settings.showSleep ? (
             <button
               type="button"
-              onClick={() => navigate('/body')}
+              onClick={() => navigate('/body?section=sleep')}
               className="flex w-full items-baseline gap-3 text-left"
             >
               <span className="w-16 shrink-0 text-label uppercase text-muted">
@@ -187,7 +238,7 @@ export function TodayScreen() {
           {settings.showSteps ? (
             <button
               type="button"
-              onClick={() => navigate('/body')}
+              onClick={() => navigate('/body?section=checkin')}
               className="flex w-full items-baseline gap-3 text-left"
             >
               <span className="w-16 shrink-0 text-label uppercase text-muted">
@@ -217,7 +268,9 @@ export function TodayScreen() {
                   }`}
                 >
                   <span aria-hidden="true">{done ? '✓' : '○'}</span>
-                  <span className="ml-1 text-caption">{habit.icon}</span>
+                  <span className="ml-1 text-caption">
+                    {habit.icon} {habit.name}
+                  </span>
                 </button>
               </li>
             ))}
@@ -225,32 +278,17 @@ export function TodayScreen() {
         </Panel>
       ) : null}
 
-      {/* Строка тренировки — не блок: появляется только при незавершённой
-          или запланированной тренировке (13). Источник — планы, а при их
-          отсутствии, как и раньше, незавершённая тренировка. */}
-      {unfinished ? (
-        <div className="flex items-center gap-3 border-t border-hairline pt-3">
-          <span className="flex-1 text-caption text-muted">{t('today.resumeWorkout')}</span>
-          <Button variant="primary" onClick={() => navigate(`/workout/${unfinished.id}`)}>
-            {t('common.continue')}
-          </Button>
-        </div>
-      ) : nextPlan ? (
-        <div className="flex items-center gap-3 border-t border-hairline pt-3">
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-caption text-muted">
-              {t('today.nextWorkout', { name: nextPlan.name })}
-            </span>
-            <span className="tnum block text-caption text-muted">
-              {dateShort(nextPlan.plannedDate)}
-            </span>
-          </span>
-          <Button variant="primary" onClick={() => navigate('/gym')}>
-            {t('today.startWorkout')}
-          </Button>
-        </div>
+      {quitHabits?.length ? (
+        <Panel title={t('body.habits')}>
+          <div className="flex flex-wrap gap-2">
+            {quitHabits.map((habit) => (
+              <Button key={habit.id} onClick={() => navigate('/body?section=habits')}>
+                {habit.icon} {habit.name}
+              </Button>
+            ))}
+          </div>
+        </Panel>
       ) : null}
-
       {/* Тихий RPG: полоса опыта 2 px и номер уровня (решение 2.5) */}
       {settings.gamificationEnabled ? (
         <div className="flex items-center gap-2 pt-2">
@@ -265,15 +303,6 @@ export function TodayScreen() {
           </span>
         </div>
       ) : null}
-
-      <button
-        type="button"
-        aria-label={t('today.addFood')}
-        onClick={() => setAddOpen(true)}
-        className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] right-4 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-[24px] text-paper shadow-sheet"
-      >
-        <span aria-hidden="true">+</span>
-      </button>
 
       <WaterSheet open={waterOpen} onClose={() => setWaterOpen(false)} date={date} />
       <AddFoodSheet open={addOpen} onClose={() => setAddOpen(false)} date={date} />
@@ -298,11 +327,7 @@ function SecondaryLine({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="text-caption text-muted"
-        onClick={() => setOpen(true)}
-      >
+      <button type="button" className="text-caption text-muted" onClick={() => setOpen(true)}>
         {t('today.secondary')}
       </button>
     );

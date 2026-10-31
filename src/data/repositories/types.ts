@@ -64,6 +64,7 @@ export interface FoodRepo extends CrudRepo<Food> {
 }
 
 export interface DiaryRepo extends CrudRepo<DiaryEntry> {
+  addBatch(entries: NewRecord<DiaryEntry>[]): Promise<void>;
   byDate(date: LocalDate): Promise<DiaryEntry[]>;
   byDateRange(from: LocalDate, to: LocalDate): Promise<DiaryEntry[]>;
   copyDay(from: LocalDate, to: LocalDate): Promise<number>;
@@ -78,6 +79,9 @@ export interface WaterRepo extends CrudRepo<WaterEntry> {
 }
 
 export interface WorkoutRepo extends CrudRepo<Workout> {
+  startFree(name: string): Promise<Workout>;
+  startRoutine(routineId: string): Promise<Workout>;
+  startPlanned(planId: string): Promise<Workout>;
   byDate(date: LocalDate): Promise<Workout[]>;
   byDateRange(from: LocalDate, to: LocalDate): Promise<Workout[]>;
   /** Незавершённая тренировка — предлагается продолжить (10.1). */
@@ -96,7 +100,10 @@ export interface WorkoutRepo extends CrudRepo<Workout> {
   softDeleteWorkout(id: string): Promise<void>;
   restoreWorkout(id: string): Promise<void>;
   /** Завершение тренировки: проставляет finishedAt и считает агрегаты. */
-  finishWorkout(id: string, patch?: { feelRating?: 1 | 2 | 3 | 4 | 5; notes?: string }): Promise<void>;
+  finishWorkout(
+    id: string,
+    patch?: { feelRating?: 1 | 2 | 3 | 4 | 5; notes?: string },
+  ): Promise<void>;
   /** Пересчёт агрегатов по текущим подходам. */
   recalcTotals(workoutId: string): Promise<void>;
 }
@@ -114,6 +121,7 @@ export interface PlannedWorkoutRepo extends CrudRepo<PlannedWorkout> {
 }
 
 export interface WorkoutSetRepo extends CrudRepo<WorkoutSet> {
+  ensureInitial(data: NewRecord<WorkoutSet>): Promise<void>;
   byWorkout(workoutId: string): Promise<WorkoutSet[]>;
   byExercise(exerciseId: string, limit?: number): Promise<WorkoutSet[]>;
   /** Подходы этого упражнения на предыдущей тренировке (C2-в). */
@@ -162,7 +170,12 @@ export interface GameRepo {
   get(): Promise<GameState>;
   update(patch: Partial<GameState>): Promise<GameState>;
   /** Начисляет опыт, если ключ дедупликации ещё не использован. */
-  awardXp(args: { reason: string; amount: number; date: LocalDate; dedupeKey: string }): Promise<boolean>;
+  awardXp(args: {
+    reason: string;
+    amount: number;
+    date: LocalDate;
+    dedupeKey: string;
+  }): Promise<boolean>;
   events(limit?: number): Promise<XpEvent[]>;
 }
 
@@ -193,7 +206,9 @@ export interface Repositories {
     byDate(date: LocalDate): Promise<SubstanceEntry[]>;
     byDateRange(from: LocalDate, to: LocalDate): Promise<SubstanceEntry[]>;
   };
-  mealPlans: CrudRepo<MealPlan> & { byWeek(weekStart: LocalDate): Promise<MealPlan | undefined> };
+  mealPlans: CrudRepo<MealPlan> & {
+    byWeek(weekStart: LocalDate): Promise<MealPlan | undefined>;
+  };
   shoppingLists: CrudRepo<ShoppingList>;
   dayTemplates: CrudRepo<DayTemplate>;
   exercises: ExerciseRepo;

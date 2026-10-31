@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, NumberField } from '@/design-system/primitives';
+import { Button, TextField } from '@/design-system/primitives';
 
 interface BarcodeDetectorLike {
   detect(source: CanvasImageSource): Promise<{ rawValue: string }[]>;
@@ -25,7 +25,9 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<'denied' | 'unsupported' | null>(null);
-  const [manual, setManual] = useState<number | ''>('');
+  const [manual, setManual] = useState('');
+  const detected = useRef(onDetected);
+  detected.current = onDetected;
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -43,7 +45,10 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
         return;
       }
       const video = videoRef.current;
-      if (!video || stopped) return;
+      if (!video || stopped) {
+        stream?.getTracks().forEach((track) => track.stop());
+        return;
+      }
       video.srcObject = stream;
       await video.play().catch(() => undefined);
 
@@ -56,7 +61,7 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
             const code = found[0]?.rawValue;
             if (code) {
               stopped = true;
-              onDetected(code);
+              detected.current(code);
               return;
             }
           } catch {
@@ -75,7 +80,7 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
         zxingControls = await reader.decodeFromVideoElement(video, (result) => {
           if (result && !stopped) {
             stopped = true;
-            onDetected(result.getText());
+            detected.current(result.getText());
           }
         });
       } catch {
@@ -91,7 +96,7 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
       zxingControls?.stop();
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [onDetected]);
+  }, []);
 
   if (error) {
     return (
@@ -100,17 +105,14 @@ export function BarcodeScanner({ onDetected }: { onDetected: (code: string) => v
           {error === 'denied' ? t('errors.cameraDenied') : t('food.barcodeNoCamera')}
         </p>
         <div className="mt-3 flex gap-2">
-          <NumberField
+          <TextField
             value={manual}
-            onChange={setManual}
+            onChange={(value) => setManual(value.replace(/\D/g, '').slice(0, 32))}
+            inputMode="numeric"
             aria-label={t('food.barcodeManual')}
             className="flex-1"
           />
-          <Button
-            variant="primary"
-            disabled={manual === ''}
-            onClick={() => onDetected(String(manual))}
-          >
+          <Button variant="primary" disabled={manual === ''} onClick={() => onDetected(manual)}>
             {t('common.search')}
           </Button>
         </div>

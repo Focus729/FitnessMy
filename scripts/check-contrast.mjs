@@ -48,6 +48,16 @@ function parseThemes(css) {
   }
   // Тёмная тема наследует то, что в ней не переопределено.
   themes.dark = { ...themes.light, ...themes.dark };
+  const tintLight = /:root\[data-profile-tint='b'\]\s*\{[\s\S]*?--accent:\s*(#[0-9a-fA-F]{6})/.exec(
+    css,
+  )?.[1];
+  const tintDark =
+    /:root\[data-theme='dark'\]\[data-profile-tint='b'\]\s*\{[\s\S]*?--accent:\s*(#[0-9a-fA-F]{6})/.exec(
+      css,
+    )?.[1];
+  if (!tintLight || !tintDark) throw new Error('Missing profile B accent tokens');
+  themes['light-profile-b'] = { ...themes.light, '--accent': tintLight };
+  themes['dark-profile-b'] = { ...themes.dark, '--accent': tintDark };
   return themes;
 }
 
@@ -69,16 +79,16 @@ async function run() {
   const rows = [];
   let failures = 0;
 
-  for (const theme of ['light', 'dark']) {
+  for (const theme of Object.keys(themes)) {
     for (const [fg, bg, min, what] of PAIRS) {
       const fgHex = themes[theme][fg];
       const bgHex = themes[theme][bg];
-      if (!fgHex || !bgHex) continue;
+      if (!fgHex || !bgHex) throw new Error(`Missing contrast token: ${theme} ${fg} ${bg}`);
       const value = ratio(fgHex, bgHex);
       const ok = value >= min;
       if (!ok) failures++;
       rows.push({
-        theme: theme === 'light' ? 'светлая' : 'тёмная',
+        theme,
         what,
         pair: `${fg} на ${bg}`,
         value: value.toFixed(2),

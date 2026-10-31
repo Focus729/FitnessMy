@@ -4,16 +4,9 @@
 автоматически (`npm run lint`, `npm run check:spec`), остальные — глазами
 при ревью.
 
-## 1. Главный экран: пять блоков и ни одним больше
+## 1. Approved direction B
 
-Раздел 13 ТЗ. **Ничего не добавляется на «Сегодня» без удаления чего-то
-другого.** Перегруженность интерфейса — главный раздражитель заказчика (K4),
-и правило пяти блоков существует, чтобы приложение через год не выглядело как
-то, от чего от него уходили.
-
-Блоки размечены в `src/screens/Today.tsx` комментариями `{/* N — ... */}`;
-`npm run check:spec` считает их и падает на шестом.
-
+The 2026-10-29 approval in PLAN.md and DESIGN.md supersedes the historical five-block Today constraint. Lead with active/planned/no-plan workout states, retain direct food/body actions, and avoid duplicate or detached primary buttons. Use phone bottom navigation and a desktop rail with bounded content and dialogs. Check rendered RU/EN layouts, themes, keyboard use and data states; static checks alone do not prove usability.
 ## 2. UI не знает о Dexie
 
 Решение 2.9 ТЗ. Весь доступ к данным — через `src/data/repositories/*`.

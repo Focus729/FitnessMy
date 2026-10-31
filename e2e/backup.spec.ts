@@ -38,6 +38,12 @@ test('копия скачивается, читается и загружает�
   await expect(page.getByText('Выбрать файл')).toBeVisible();
   await page.setInputFiles('input[type="file"][accept*="json"]', path as string);
   await expect(page.getByText(/Будет добавлено 0/)).toBeVisible();
+  await page.getByRole('radio', { name: 'Заменить всё', exact: true }).click();
+  await page.getByRole('button', { name: 'Применить', exact: true }).click();
+  await expect(page.getByText('Копия загружена', { exact: true })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await page.goto('/#/food');
+  await expect(page.getByRole('button', { name: /Быстрая запись/ })).toBeVisible();
 });
 
 test('импорт чужого файла отклоняется с понятным сообщением', async ({ page }) => {

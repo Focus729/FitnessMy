@@ -16,22 +16,22 @@
      4.5:1 из раздела 19.3. Доступность важнее буквы палитры, поэтому оттенок
      затемнён до ближайшего проходящего значения; тон сохранён. */
   --muted: #666d78;
-  --accent: #2b3ff0;
+  --accent: #0f6b61;
   --over: #c8452a;
   --good: #1b7a4b;
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --ink: #e9ecf1;
-  --paper: #0e1013;
-  --surface: #171a1f;
-  --surface-0: #0e1013;
-  --surface-1: #171a1f;
-  --surface-2: #1f232a;
+  --ink: #f4f6f9;
+  --paper: #10171e;
+  --surface: #1c2730;
+  --surface-0: #10171e;
+  --surface-1: #1c2730;
+  --surface-2: #24343f;
   --hairline: #262a31;
-  --muted: #8a919c;
-  --accent: #7c8cff;
+  --muted: #aebcc8;
+  --accent: #80e2cd;
   --over: #e2694e;
   --good: #3fa877;
   color-scheme: dark;
@@ -39,15 +39,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme='system'] {
-    --ink: #e9ecf1;
-    --paper: #0e1013;
-    --surface: #171a1f;
-    --surface-0: #0e1013;
-    --surface-1: #171a1f;
-    --surface-2: #1f232a;
+    --ink: #f4f6f9;
+    --paper: #10171e;
+    --surface: #1c2730;
+    --surface-0: #10171e;
+    --surface-1: #1c2730;
+    --surface-2: #24343f;
     --hairline: #262a31;
-    --muted: #8a919c;
-    --accent: #7c8cff;
+    --muted: #aebcc8;
+    --accent: #80e2cd;
     --over: #e2694e;
     --good: #3fa877;
     color-scheme: dark;
@@ -57,9 +57,14 @@
 /* 23: два профиля на одном устройстве не должны путаться —
    у каждого свой оттенок акцента. Задаётся атрибутом data-profile-hue. */
 :root[data-profile-tint='b'] {
-  --accent: #0f8a86;
+  --accent: #465dba;
 }
-:root[data-theme='dark'][data-profile-tint='b'],
-:root[data-profile-tint='b']:is([data-theme='system']) {
-  --accent: #4fd6cf;
+:root[data-theme='dark'][data-profile-tint='b'] {
+  --accent: #aab8ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='system'][data-profile-tint='b'] {
+    --accent: #aab8ff;
+  }
 }

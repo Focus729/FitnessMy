@@ -22,6 +22,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useId,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
@@ -30,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 
 /** Порог свайпа вниз, после которого панель закрывается. */
 const SWIPE_CLOSE_PX = 90;
+const openDialogs: HTMLElement[] = [];
 
 export interface SheetProps {
   open: boolean;
@@ -52,25 +54,82 @@ export function Sheet({ open, onClose, title, children, footer, dirty, onSave }:
   const [confirming, setConfirming] = useState(false);
   const [dragY, setDragY] = useState(0);
   const dragStart = useRef<number | null>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   /** Единая точка выхода: молча либо через панель выбора. */
   const requestClose = useCallback(() => {
     if (dirty) setConfirming(true);
     else onClose();
   }, [dirty, onClose]);
+  const closeRef = useRef(requestClose);
+  closeRef.current = requestClose;
 
   useEffect(() => {
     if (!open) return;
+    const element = dialog.current;
+    if (!element) return;
+    const previous = document.activeElement as HTMLElement | null;
+    openDialogs.push(element);
+    const root = document.getElementById('root');
+    if (root) root.inert = true;
+    const initialScope = confirming
+      ? element.parentElement?.querySelector<HTMLElement>('[data-close-choice]')
+      : element;
+    if (confirming) {
+      initialScope?.querySelector<HTMLElement>('button')?.focus();
+      element.inert = true;
+    } else if (!element.contains(document.activeElement)) element.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') requestClose();
+      if (openDialogs.at(-1) !== element) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (confirming) setConfirming(false);
+        else closeRef.current();
+      }
+      if (e.key === 'Tab') {
+        const scope = confirming
+          ? element.parentElement?.querySelector('[data-close-choice]')
+          : element;
+        const controls = Array.from(
+          scope?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex="0"]',
+          ) ?? [],
+        ).filter((node) => node.getClientRects().length);
+        const first = controls[0];
+        const last = controls.at(-1);
+        if (!first) {
+          e.preventDefault();
+          element.focus();
+        } else if (
+          e.shiftKey &&
+          (document.activeElement === first || !scope?.contains(document.activeElement))
+        ) {
+          e.preventDefault();
+          last?.focus();
+        } else if (
+          !e.shiftKey &&
+          (document.activeElement === last || !scope?.contains(document.activeElement))
+        ) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      element.inert = false;
+      const index = openDialogs.indexOf(element);
+      if (index >= 0) openDialogs.splice(index, 1);
+      if (!openDialogs.length) {
+        document.body.style.overflow = '';
+        if (root) root.inert = false;
+      }
+      if (previous?.isConnected) previous.focus();
     };
-  }, [open, requestClose]);
+  }, [open, confirming]);
 
   // Сбрасываем состояние, когда панель закрылась снаружи.
   useEffect(() => {
@@ -106,9 +165,13 @@ export function Sheet({ open, onClose, title, children, footer, dirty, onSave }:
       />
 
       <div
+        ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        className="relative max-h-[92vh] overflow-y-auto rounded-t-2xl bg-surface shadow-sheet animate-sheetIn"
+        aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : t('common.edit')}
+        className="sheet-panel relative max-h-[92dvh] overflow-y-auto rounded-t-2xl bg-surface shadow-sheet animate-sheetIn"
         style={dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined}
       >
         <div
@@ -116,11 +179,20 @@ export function Sheet({ open, onClose, title, children, footer, dirty, onSave }:
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={() => {
+            dragStart.current = null;
+            setDragY(0);
+          }}
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-hairline" />
           <div className="flex items-start gap-2">
-            {title ? <h2 className="min-w-0 flex-1 text-section">{title}</h2> : <span className="flex-1" />}
+            {title ? (
+              <h2 id={titleId} className="min-w-0 flex-1 text-section">
+                {title}
+              </h2>
+            ) : (
+              <span className="flex-1" />
+            )}
             <button
               type="button"
               aria-label={t('common.close')}
@@ -179,7 +251,9 @@ function CloseChoice({
     <div className="absolute inset-0 z-20 flex flex-col justify-end">
       <div className="absolute inset-0 bg-ink/30" onClick={onContinue} aria-hidden="true" />
       <div
+        data-close-choice
         role="dialog"
+        aria-label={t('sheet.unsavedTitle')}
         aria-modal="true"
         className="relative rounded-t-2xl border-t border-hairline bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-sheet animate-sheetIn"
       >

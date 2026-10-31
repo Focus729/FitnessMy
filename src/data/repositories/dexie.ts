@@ -8,7 +8,13 @@ import type { Table } from 'dexie';
 import { openDb, type LentaDB } from '@/data/db/schema';
 import { uuid } from '@/lib/id';
 import { nowIso, today } from '@/lib/date';
-import { searchFoods, searchKeyFor, frequentFoods, tokenize, matches } from '@/domain/nutrition/search';
+import {
+  searchFoods,
+  searchKeyFor,
+  frequentFoods,
+  tokenize,
+  matches,
+} from '@/domain/nutrition/search';
 import type {
   BodyMetric,
   CardioSession,
@@ -61,7 +67,12 @@ import type {
 import { levelForXp } from '@/domain/gamification/xp';
 import { recalcWorkoutTotals } from '@/domain/training/aggregates';
 import { epley1RM } from '@/domain/training/oneRm';
-import { overduePlans, reschedule as reschedulePlans, upcomingPlan } from '@/domain/training/planning';
+import { prefillFromLast } from '@/domain/training/progression';
+import {
+  overduePlans,
+  reschedule as reschedulePlans,
+  upcomingPlan,
+} from '@/domain/training/planning';
 
 interface HasBase {
   id: string;
@@ -99,7 +110,10 @@ function crud<T extends HasBase>(table: Table<T, string>): CrudRepo<T> {
       await table.update(id, { deletedAt: ts, updatedAt: ts } as never);
     },
     async restore(id) {
-      await table.update(id, { deletedAt: undefined, updatedAt: nowIso() } as never);
+      await table.update(id, {
+        deletedAt: undefined,
+        updatedAt: nowIso(),
+      } as never);
     },
     async bulkPut(items) {
       await table.bulkPut(items);
@@ -115,7 +129,10 @@ function makeFoodRepo(db: LentaDB): FoodRepo {
   return {
     ...base,
     async create(data) {
-      const withKey = { ...data, searchKey: data.searchKey || searchKeyFor(data as Food) };
+      const withKey = {
+        ...data,
+        searchKey: data.searchKey || searchKeyFor(data as Food),
+      };
       return base.create(withKey as NewRecord<Food>);
     },
     async update(id, patch) {
@@ -140,7 +157,9 @@ function makeFoodRepo(db: LentaDB): FoodRepo {
     async frequent(limit = 12) {
       // IndexedDB не индексирует булевы значения, поэтому избранное отбирается
       // по загруженному набору, а не запросом по индексу isFavorite.
-      const used = (await db.foods.where('useCount').above(0).toArray()).filter((f) => !f.deletedAt);
+      const used = (await db.foods.where('useCount').above(0).toArray()).filter(
+        (f) => !f.deletedAt,
+      );
       const favorites = (await base.all()).filter((f) => f.isFavorite);
       return frequentFoods(dedupe([...favorites, ...used]), limit);
     },
@@ -157,7 +176,10 @@ function makeFoodRepo(db: LentaDB): FoodRepo {
     async toggleFavorite(id) {
       const food = await db.foods.get(id);
       if (!food) return;
-      await db.foods.update(id, { isFavorite: !food.isFavorite, updatedAt: nowIso() });
+      await db.foods.update(id, {
+        isFavorite: !food.isFavorite,
+        updatedAt: nowIso(),
+      });
     },
   };
 }
@@ -177,6 +199,14 @@ function makeDiaryRepo(db: LentaDB): DiaryRepo {
 
   return {
     ...base,
+    async addBatch(entries) {
+      await db.transaction('rw', db.diary, async () => {
+        for (const entry of entries) {
+          if (entry.id && (await db.diary.get(entry.id))) continue;
+          await base.create(entry);
+        }
+      });
+    },
     byDate,
     async byDateRange(from, to) {
       return (await db.diary.where('date').between(from, to, true, true).toArray()).filter(
@@ -255,6 +285,97 @@ function makeWorkoutRepo(db: LentaDB): WorkoutRepo {
         (w) => !w.deletedAt,
       );
     },
+    async startPlanned(planId) {
+      return db.transaction('rw', db.plannedWorkouts, db.workouts, db.workoutSets, async () => {
+        const plan = await db.plannedWorkouts.get(planId);
+        if (!plan || plan.deletedAt) throw new Error('Plan unavailable');
+        if (plan.workoutId) {
+          const existing = await db.workouts.get(plan.workoutId);
+          if (existing && !existing.deletedAt) return existing;
+        }
+        const ts = nowIso();
+        const items = [...plan.items].sort((a, b) => a.order - b.order);
+        const workout = await base.create({
+          date: today(),
+          startedAt: ts,
+          routineId: plan.routineId,
+          routineDayId: plan.routineDayId,
+          name: plan.name,
+          totalVolumeKg: 0,
+          totalSets: 0,
+          exerciseOrder: items.map((item) => item.exerciseId),
+        });
+        const setRepo = makeWorkoutSetRepo(db);
+        for (const item of items) {
+          const previous = await setRepo.lastSessionSets(item.exerciseId, workout.id);
+          for (let index = 0; index < Math.max(1, item.targetSets); index++) {
+            const prefill = prefillFromLast(previous, index);
+            await setRepo.create({
+              workoutId: workout.id,
+              exerciseId: item.exerciseId,
+              order: index,
+              supersetGroup: item.supersetGroup,
+              weightKg: item.targetWeightKg ?? prefill?.weightKg ?? 0,
+              reps: prefill?.reps ?? item.targetRepsMin,
+              type: 'normal',
+              isCompleted: false,
+              estimated1RM: 0,
+            });
+          }
+        }
+        await db.plannedWorkouts.update(plan.id, {
+          status: 'started',
+          workoutId: workout.id,
+          updatedAt: ts,
+        });
+        return workout;
+      });
+    },
+    async startFree(name) {
+      return db.transaction('rw', db.workouts, async () => {
+        const active = (await db.workouts.toArray()).find(
+          (workout) => !workout.deletedAt && !workout.finishedAt,
+        );
+        return (
+          active ??
+          base.create({
+            date: today(),
+            startedAt: nowIso(),
+            name,
+            totalVolumeKg: 0,
+            totalSets: 0,
+            exerciseOrder: [],
+          })
+        );
+      });
+    },
+    async startRoutine(routineId) {
+      return db.transaction('rw', db.workouts, db.routines, async () => {
+        const active = (await db.workouts.toArray()).find(
+          (workout) => !workout.deletedAt && !workout.finishedAt,
+        );
+        if (active) return active;
+        const routine = await db.routines.get(routineId);
+        if (!routine || routine.deletedAt || !routine.days.length)
+          throw new Error('Routine unavailable');
+        const index = routine.nextDayIndex ?? 0;
+        const day = routine.days[index % routine.days.length]!;
+        const workout = await base.create({
+          date: today(),
+          startedAt: nowIso(),
+          routineId,
+          routineDayId: day.id,
+          name: `${routine.name} · ${day.name}`,
+          totalVolumeKg: 0,
+          totalSets: 0,
+          exerciseOrder: [...day.items]
+            .sort((a, b) => a.order - b.order)
+            .map((item) => item.exerciseId),
+        });
+        await db.routines.update(routineId, { nextDayIndex: index + 1, updatedAt: nowIso() });
+        return workout;
+      });
+    },
     async unfinished() {
       const all = await base.all();
       return all
@@ -272,82 +393,107 @@ function makeWorkoutRepo(db: LentaDB): WorkoutRepo {
     recalcTotals,
 
     async updateWorkout(id, patch) {
-      await base.update(id, patch);
-      // Дата могла измениться — нигде она не кэшируется отдельно от записи,
-      // поэтому история и графики подхватят новое значение сами.
-      await recalcTotals(id);
+      await db.transaction('rw', db.workouts, db.workoutSets, async () => {
+        await base.update(id, patch);
+        // Дата могла измениться — нигде она не кэшируется отдельно от записи,
+        // поэтому история и графики подхватят новое значение сами.
+        await recalcTotals(id);
+      });
     },
 
     async updateSet(setId, patch) {
-      const current = await db.workoutSets.get(setId);
-      if (!current) return;
-      const next = { ...current, ...patch };
-      await db.workoutSets.update(setId, {
-        ...patch,
-        estimated1RM: epley1RM(next.weightKg, next.reps),
-        updatedAt: nowIso(),
+      await db.transaction('rw', db.workoutSets, db.workouts, async () => {
+        const current = await db.workoutSets.get(setId);
+        if (!current) return;
+        const next = { ...current, ...patch };
+        await db.workoutSets.update(setId, {
+          ...patch,
+          estimated1RM: epley1RM(next.weightKg, next.reps),
+          updatedAt: nowIso(),
+        });
+        await recalcTotals(current.workoutId);
       });
-      await recalcTotals(current.workoutId);
     },
 
     async addSetToWorkout(workoutId, set) {
-      const ts = nowIso();
-      const record: WorkoutSet = {
-        ...(set as object),
-        workoutId,
-        id: set.id ?? uuid(),
-        estimated1RM: epley1RM(set.weightKg, set.reps),
-        createdAt: ts,
-        updatedAt: ts,
-      } as WorkoutSet;
-      await db.workoutSets.put(record);
-      await recalcTotals(workoutId);
-      return record.id;
+      return db.transaction('rw', db.workoutSets, db.workouts, async () => {
+        const ts = nowIso();
+        const record: WorkoutSet = {
+          ...(set as object),
+          workoutId,
+          id: set.id ?? uuid(),
+          estimated1RM: epley1RM(set.weightKg, set.reps),
+          createdAt: ts,
+          updatedAt: ts,
+        } as WorkoutSet;
+        await db.workoutSets.put(record);
+        await recalcTotals(workoutId);
+        return record.id;
+      });
     },
 
     async removeSet(setId) {
-      const current = await db.workoutSets.get(setId);
-      if (!current) return;
-      const ts = nowIso();
-      await db.workoutSets.update(setId, { deletedAt: ts, updatedAt: ts });
-      await recalcTotals(current.workoutId);
+      await db.transaction('rw', db.workoutSets, db.workouts, async () => {
+        const current = await db.workoutSets.get(setId);
+        if (!current) return;
+        const ts = nowIso();
+        await db.workoutSets.update(setId, { deletedAt: ts, updatedAt: ts });
+        await recalcTotals(current.workoutId);
+      });
     },
 
     async softDeleteWorkout(id) {
-      await base.remove(id);
-      // План, который вёл к этой тренировке, возвращается в состояние «запланирован».
-      const plans = await db.plannedWorkouts.where('routineId').notEqual('').toArray();
-      const linked = plans.find((p) => p.workoutId === id && !p.deletedAt);
-      if (linked) {
-        await db.plannedWorkouts.update(linked.id, {
-          status: 'planned',
-          workoutId: undefined,
-          updatedAt: nowIso(),
-        });
-      }
+      await db.transaction('rw', db.workouts, db.plannedWorkouts, async () => {
+        await base.remove(id);
+        const linked = (await db.plannedWorkouts.toArray()).filter(
+          (p) => p.workoutId === id && !p.deletedAt,
+        );
+        for (const plan of linked)
+          await db.plannedWorkouts.update(plan.id, {
+            status: 'planned',
+            // Retain the tombstone link for Undo; starting again replaces it atomically.
+            updatedAt: nowIso(),
+          });
+      });
     },
 
     async restoreWorkout(id) {
-      await base.restore(id);
+      await db.transaction('rw', db.workouts, db.plannedWorkouts, async () => {
+        await base.restore(id);
+        const workout = await db.workouts.get(id);
+        const linked = (await db.plannedWorkouts.toArray()).filter(
+          (p) => p.workoutId === id && !p.deletedAt,
+        );
+        for (const plan of linked)
+          await db.plannedWorkouts.update(plan.id, {
+            status: workout?.finishedAt ? 'completed' : 'started',
+            updatedAt: nowIso(),
+          });
+      });
     },
 
     async finishWorkout(id, patch) {
-      const sets = (await db.workoutSets.where('workoutId').equals(id).toArray()).filter(
-        (s) => !s.deletedAt,
-      );
-      await db.workouts.update(id, {
-        finishedAt: nowIso(),
-        ...recalcWorkoutTotals(sets),
-        ...(patch?.feelRating ? { feelRating: patch.feelRating } : {}),
-        ...(patch?.notes != null ? { notes: patch.notes } : {}),
-        updatedAt: nowIso(),
+      await db.transaction('rw', db.workoutSets, db.workouts, db.plannedWorkouts, async () => {
+        const sets = (await db.workoutSets.where('workoutId').equals(id).toArray()).filter(
+          (s) => !s.deletedAt,
+        );
+        await db.workouts.update(id, {
+          finishedAt: nowIso(),
+          ...recalcWorkoutTotals(sets),
+          ...(patch?.feelRating ? { feelRating: patch.feelRating } : {}),
+          ...(patch?.notes != null ? { notes: patch.notes } : {}),
+          updatedAt: nowIso(),
+        });
+        // Связанный план переходит в «выполнен».
+        const plans = (await db.plannedWorkouts.toArray()).filter((p) => !p.deletedAt);
+        const linked = plans.find((p) => p.workoutId === id);
+        if (linked) {
+          await db.plannedWorkouts.update(linked.id, {
+            status: 'completed',
+            updatedAt: nowIso(),
+          });
+        }
       });
-      // Связанный план переходит в «выполнен».
-      const plans = (await db.plannedWorkouts.toArray()).filter((p) => !p.deletedAt);
-      const linked = plans.find((p) => p.workoutId === id);
-      if (linked) {
-        await db.plannedWorkouts.update(linked.id, { status: 'completed', updatedAt: nowIso() });
-      }
     },
   };
 }
@@ -395,6 +541,13 @@ function makeWorkoutSetRepo(db: LentaDB): WorkoutSetRepo {
   const base = crud<WorkoutSet>(db.workoutSets);
   return {
     ...base,
+    async ensureInitial(data) {
+      await db.transaction('rw', db.workoutSets, async () => {
+        const existing = await db.workoutSets.where('workoutId').equals(data.workoutId).toArray();
+        if (!existing.some((set) => set.exerciseId === data.exerciseId && !set.deletedAt))
+          await base.create(data);
+      });
+    },
     async byWorkout(workoutId) {
       return (await db.workoutSets.where('workoutId').equals(workoutId).toArray())
         .filter((s) => !s.deletedAt)
@@ -466,7 +619,10 @@ function makeExerciseRepo(db: LentaDB): ExerciseRepo {
     async toggleFavorite(id) {
       const ex = await db.exercises.get(id);
       if (!ex) return;
-      await db.exercises.update(id, { isFavorite: !ex.isFavorite, updatedAt: nowIso() });
+      await db.exercises.update(id, {
+        isFavorite: !ex.isFavorite,
+        updatedAt: nowIso(),
+      });
     },
   };
 }
@@ -500,7 +656,9 @@ function makeBodyRepo(db: LentaDB): BodyRepo {
   };
 }
 
-function makeDatedRepo<T extends HasBase & { date: LocalDate }>(table: Table<T, string>): DatedRepo<T> {
+function makeDatedRepo<T extends HasBase & { date: LocalDate }>(
+  table: Table<T, string>,
+): DatedRepo<T> {
   const base = crud<T>(table);
   return {
     ...base,
@@ -572,7 +730,12 @@ function makeSettingsRepo(db: LentaDB): SettingsRepo {
     },
     async update(patch) {
       const current = await this.get();
-      const next: Settings = { ...current, ...patch, id: 'singleton', updatedAt: nowIso() };
+      const next: Settings = {
+        ...current,
+        ...patch,
+        id: 'singleton',
+        updatedAt: nowIso(),
+      };
       await db.settings.put(next);
       return next;
     },
@@ -619,7 +782,12 @@ function makeGameRepo(db: LentaDB): GameRepo {
     },
     async update(patch) {
       const current = await this.get();
-      const next: GameState = { ...current, ...patch, id: 'singleton', updatedAt: nowIso() };
+      const next: GameState = {
+        ...current,
+        ...patch,
+        id: 'singleton',
+        updatedAt: nowIso(),
+      };
       next.level = levelForXp(next.xp);
       await db.gameState.put(next);
       return next;

@@ -1,3 +1,4 @@
+import { MeasureField } from '@/components/MeasureField';
 /**
  * Онбординг — раздел 8.1. Шесть шагов, назад можно всегда.
  * Пропустить онбординг нельзя, но каждый шаг, кроме 2 и 3, — можно.
@@ -11,6 +12,7 @@ import { useRepos } from '@/data/repositories/context';
 import { useSettings, useUpdateSettings } from '@/app/hooks';
 import { setLocale, type Locale } from '@/i18n';
 import { requestPersistentStorage } from '@/data/backup';
+import { getProfileRef } from '@/data/profiles';
 import {
   calculateTargets,
   targetInputFromProfile,
@@ -43,9 +45,10 @@ export function Onboarding() {
   const updateSettings = useUpdateSettings();
 
   const [step, setStep] = useState(1);
+  const [personalConfirmed, setPersonalConfirmed] = useState(false);
   const [persistGranted, setPersistGranted] = useState<boolean | null>(null);
   const [draft, setDraft] = useState<Draft>({
-    name: '',
+    name: getProfileRef(repos.profileId)?.name ?? '',
     sex: 'male',
     birthDate: '1990-01-01',
     heightCm: 175,
@@ -59,7 +62,13 @@ export function Onboarding() {
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
 
   const calc: CalculatedTargets | null = useMemo(() => {
-    if (draft.weightKg === '' || draft.heightCm === '') return null;
+    if (
+      draft.weightKg === '' ||
+      draft.heightCm === '' ||
+      draft.weightKg <= 0 ||
+      draft.heightCm <= 0
+    )
+      return null;
     const profile = {
       sex: draft.sex,
       birthDate: draft.birthDate,
@@ -98,11 +107,24 @@ export function Onboarding() {
   };
 
   const canGoNext =
-    (step !== 2 || draft.heightCm !== '') && (step !== 5 || draft.weightKg !== '');
+    (step !== 2 ||
+      (personalConfirmed &&
+        draft.name.trim() &&
+        draft.heightCm !== '' &&
+        draft.heightCm >= 80 &&
+        draft.heightCm <= 250 &&
+        draft.birthDate &&
+        draft.birthDate < today())) &&
+    (step !== 5 || (draft.weightKg !== '' && draft.weightKg >= 20 && draft.weightKg <= 500));
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col px-5 py-8">
-      <Label>{t('onboarding.step', { current: Math.min(step, TOTAL_STEPS), total: TOTAL_STEPS })}</Label>
+      <Label>
+        {t('onboarding.step', {
+          current: Math.min(step, TOTAL_STEPS),
+          total: TOTAL_STEPS,
+        })}
+      </Label>
 
       <div className="mt-4 flex-1">
         {step === 1 ? (
@@ -146,17 +168,27 @@ export function Onboarding() {
                 type="date"
                 className="min-h-touch w-full rounded-xl border border-hairline bg-surface px-3 text-body"
                 value={draft.birthDate}
+                aria-label={t('onboarding.birthDate')}
                 onChange={(e) => patch({ birthDate: e.target.value })}
               />
             </Field>
             <Field label={t('onboarding.height')}>
-              <NumberField
+              <MeasureField
+                measure="length"
                 value={draft.heightCm}
                 onChange={(v) => patch({ heightCm: v })}
                 suffix={t('units.cm')}
                 aria-label={t('onboarding.height')}
               />
             </Field>
+            <label className="mt-4 flex min-h-touch items-center gap-3 text-caption">
+              <input
+                type="checkbox"
+                checked={personalConfirmed}
+                onChange={(e) => setPersonalConfirmed(e.target.checked)}
+              />
+              {t('onboarding.confirmPersonal')}
+            </label>
           </Step>
         ) : null}
 
@@ -214,7 +246,7 @@ export function Onboarding() {
 
         {step === 5 ? (
           <Step title={t('onboarding.weightTitle')} subtitle={t('onboarding.weightSubtitle')}>
-            <NumberField
+            <MeasureField
               value={draft.weightKg}
               onChange={(v) => patch({ weightKg: v })}
               suffix={t('units.kg')}
@@ -252,9 +284,7 @@ export function Onboarding() {
                 {persistGranted === true ? (
                   <div className="text-body text-good">{t('onboarding.persistOn')}</div>
                 ) : (
-                  <Button
-                    onClick={() => void requestPersistentStorage().then(setPersistGranted)}
-                  >
+                  <Button onClick={() => void requestPersistentStorage().then(setPersistGranted)}>
                     {t('onboarding.enablePersist')}
                   </Button>
                 )}
@@ -316,7 +346,9 @@ function TargetsReview({
       <p className="mt-4 text-body text-muted">
         {t('onboarding.calcExplain', {
           bmr: num(calc.bmr),
-          formula: t(calc.formula === 'katch' ? 'onboarding.formulaKatch' : 'onboarding.formulaMifflin'),
+          formula: t(
+            calc.formula === 'katch' ? 'onboarding.formulaKatch' : 'onboarding.formulaMifflin',
+          ),
           activity: draft.activityLevel,
           tdee: num(calc.tdee),
           rate: num(rate, 1),
@@ -326,11 +358,20 @@ function TargetsReview({
       <p className="mt-2 text-caption text-muted">{t('onboarding.calcFootnote')}</p>
 
       {calc.warnings.map((w) => (
-        <p key={w.kind} className="mt-3 rounded-xl border border-over px-3 py-2 text-caption text-over">
+        <p
+          key={w.kind}
+          className="mt-3 rounded-xl border border-over px-3 py-2 text-caption text-over"
+        >
           {w.kind === 'belowBmr'
-            ? t('onboarding.warnBelowBmr', { kcal: num(w.kcal), bmr: num(w.bmr) })
+            ? t('onboarding.warnBelowBmr', {
+                kcal: num(w.kcal),
+                bmr: num(w.bmr),
+              })
             : w.kind === 'belowFloor'
-              ? t('onboarding.warnBelowFloor', { kcal: num(w.kcal), floor: num(w.floor) })
+              ? t('onboarding.warnBelowFloor', {
+                  kcal: num(w.kcal),
+                  floor: num(w.floor),
+                })
               : t('onboarding.warnFastRate', { rate: num(w.ratePerWeekKg, 1) })}
         </p>
       ))}

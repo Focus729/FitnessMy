@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
 import { useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
+import { useSaveAction } from '@/app/useSaveAction';
 import type { Exercise, Routine, RoutineDay, RoutineItem } from '@/domain/model';
 import { uuid } from '@/lib/id';
 import { Button, NumberField, SectionHeader, Sheet, TextField } from '@/design-system/primitives';
@@ -31,11 +32,12 @@ export function RoutineEditorSheet({
   onClose: () => void;
   routine?: Routine;
   /** Доступен только для программ с `templateKey`. */
-  onResetToTemplate?: (routine: Routine) => void;
+  onResetToTemplate?: (routine: Routine) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const repos = useRepos();
   const settings = useSettings();
+  const saving = useSaveAction();
   const exercises = useQueryWithDefault((r) => r.exercises.all(), EMPTY);
 
   const [name, setName] = useState('');
@@ -55,6 +57,24 @@ export function RoutineEditorSheet({
   };
 
   const dirty = routine != null && (name !== routine.name || days !== routine.days);
+  const valid =
+    days.length > 0 &&
+    days.every((day) =>
+      day.items.every(
+        (item) =>
+          Number.isInteger(item.targetSets) &&
+          item.targetSets >= 1 &&
+          item.targetSets <= 50 &&
+          Number.isInteger(item.targetRepsMin) &&
+          item.targetRepsMin >= 1 &&
+          Number.isInteger(item.targetRepsMax) &&
+          item.targetRepsMax >= item.targetRepsMin &&
+          item.targetRepsMax <= 1000 &&
+          Number.isInteger(item.restSec) &&
+          item.restSec >= 0 &&
+          item.restSec <= 3600,
+      ),
+    );
 
   const patchDay = (dayId: string, patch: Partial<RoutineDay>) =>
     setDays((cur) => cur.map((d) => (d.id === dayId ? { ...d, ...patch } : d)));
@@ -109,7 +129,7 @@ export function RoutineEditorSheet({
   };
 
   const save = async () => {
-    if (!routine) return;
+    if (!routine || !valid) return;
     await repos.routines.update(routine.id, { name: name.trim() || routine.name, days });
     onClose();
   };
@@ -120,16 +140,27 @@ export function RoutineEditorSheet({
     <>
       <Sheet
         open={open}
-        onClose={onClose}
+        onClose={() => !saving.busy && onClose()}
         dirty={dirty}
-        onSave={() => void save()}
+        onSave={valid ? () => void saving.run(save) : undefined}
         title={t('gym.routineEdit')}
         footer={
-          <Button variant="primary" full onClick={() => void save()}>
+          <Button
+            variant="primary"
+            full
+            disabled={!valid || saving.busy}
+            onClick={() => void saving.run(save)}
+          >
             {t('common.save')}
           </Button>
         }
       >
+        {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+        {!valid ? (
+          <p role="alert" className="text-caption text-over">
+            {t('gym.routineBounds')}
+          </p>
+        ) : null}
         <TextField value={name} onChange={setName} aria-label={t('common.name')} />
 
         <div className="mt-4 space-y-4">
@@ -192,31 +223,48 @@ export function RoutineEditorSheet({
                           </button>
                         </div>
 
-                        <div className="mt-1 grid grid-cols-4 gap-1">
-                          <NumberField
-                            value={item.targetSets}
-                            onChange={(v) => patchItem(day.id, item.id, { targetSets: v === '' ? 1 : v })}
-                            aria-label={t('gym.targetSets')}
-                          />
-                          <NumberField
-                            value={item.targetRepsMin}
-                            onChange={(v) =>
-                              patchItem(day.id, item.id, { targetRepsMin: v === '' ? 1 : v })
-                            }
-                            aria-label={t('gym.targetReps')}
-                          />
-                          <NumberField
-                            value={item.targetRepsMax}
-                            onChange={(v) =>
-                              patchItem(day.id, item.id, { targetRepsMax: v === '' ? 1 : v })
-                            }
-                            aria-label={t('gym.targetReps')}
-                          />
-                          <NumberField
-                            value={item.restSec}
-                            onChange={(v) => patchItem(day.id, item.id, { restSec: v === '' ? 60 : v })}
-                            aria-label={t('gym.rest')}
-                          />
+                        <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <label className="space-y-1 text-caption text-muted">
+                            <span className="block">{t('gym.targetSets')}</span>
+                            <NumberField
+                              value={item.targetSets}
+                              onChange={(v) =>
+                                patchItem(day.id, item.id, { targetSets: v === '' ? 1 : v })
+                              }
+                              aria-label={t('gym.targetSets')}
+                            />
+                          </label>
+                          <label className="space-y-1 text-caption text-muted">
+                            <span className="block">{t('gym.targetRepsMin')}</span>
+                            <NumberField
+                              value={item.targetRepsMin}
+                              onChange={(v) =>
+                                patchItem(day.id, item.id, { targetRepsMin: v === '' ? 1 : v })
+                              }
+                              aria-label={t('gym.targetRepsMin')}
+                            />
+                          </label>
+                          <label className="space-y-1 text-caption text-muted">
+                            <span className="block">{t('gym.targetRepsMax')}</span>
+                            <NumberField
+                              value={item.targetRepsMax}
+                              onChange={(v) =>
+                                patchItem(day.id, item.id, { targetRepsMax: v === '' ? 1 : v })
+                              }
+                              aria-label={t('gym.targetRepsMax')}
+                            />
+                          </label>
+                          <label className="space-y-1 text-caption text-muted">
+                            <span className="block">{t('gym.rest')}</span>
+                            <NumberField
+                              value={item.restSec}
+                              suffix={t('units.sec')}
+                              onChange={(v) =>
+                                patchItem(day.id, item.id, { restSec: v === '' ? 60 : v })
+                              }
+                              aria-label={t('gym.rest')}
+                            />
+                          </label>
                         </div>
 
                         <label className="mt-1 flex min-h-touch items-center gap-2 text-caption text-muted">
@@ -248,7 +296,12 @@ export function RoutineEditorSheet({
             onClick={() =>
               setDays((cur) => [
                 ...cur,
-                { id: uuid(), name: `${t('gym.routineDay')} ${cur.length + 1}`, order: cur.length, items: [] },
+                {
+                  id: uuid(),
+                  name: `${t('gym.routineDay')} ${cur.length + 1}`,
+                  order: cur.length,
+                  items: [],
+                },
               ])
             }
           >
@@ -257,8 +310,16 @@ export function RoutineEditorSheet({
 
           {routine.templateKey && onResetToTemplate ? (
             <>
-              <SectionHeader title={t('gym.routineResetTemplate')} hint={t('gym.routineResetHint')} />
-              <Button variant="danger" full onClick={() => onResetToTemplate(routine)}>
+              <SectionHeader
+                title={t('gym.routineResetTemplate')}
+                hint={t('gym.routineResetHint')}
+              />
+              <Button
+                variant="danger"
+                full
+                disabled={saving.busy}
+                onClick={() => void saving.run(() => onResetToTemplate(routine))}
+              >
                 {t('gym.routineResetTemplate')}
               </Button>
             </>

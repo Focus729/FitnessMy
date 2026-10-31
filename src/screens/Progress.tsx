@@ -7,17 +7,20 @@
  */
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useRouteState } from '@/app/navigation';
 import { useQuery } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
 import { buildSummary, type DayFacts } from '@/domain/stats/summary';
 import { computeComparisons, type DayFactsExt } from '@/domain/stats/comparisons';
 import { movingAverage } from '@/domain/stats/movingAverage';
+import { isHabitDone, isScheduledOn } from '@/domain/habits/schedule';
 import { computeFoodIndex } from '@/domain/nutrition/foodIndex';
 import { sumEntries } from '@/domain/nutrition/nutrients';
 import { evaluateAchievements } from '@/domain/gamification/achievements';
 import { levelProgress } from '@/domain/gamification/xp';
 import { addDays, lastNDays, today as todayFn } from '@/lib/date';
 import { durationLong, num, signed } from '@/lib/format';
+import { toDisplay, unitKey } from '@/lib/units';
 import { Segmented, Label } from '@/design-system/primitives';
 import { KcalChart, WeightChart } from '@/components/charts/WeightChart';
 import { HabitHeatmap } from '@/components/charts/HabitHeatmap';
@@ -27,7 +30,12 @@ type Section = 'charts' | 'summaries' | 'comparisons' | 'achievements';
 export function ProgressScreen() {
   const { t } = useTranslation();
   const settings = useSettings();
-  const [section, setSection] = useState<Section>('charts');
+  const [section, setSection] = useRouteState<Section>('section', 'charts', [
+    'charts',
+    'summaries',
+    'comparisons',
+    'achievements',
+  ]);
 
   const facts = useDayFacts(180);
 
@@ -41,7 +49,12 @@ export function ProgressScreen() {
           { value: 'summaries' as const, label: t('progress.summaries') },
           { value: 'comparisons' as const, label: t('progress.comparisons') },
           ...(settings.gamificationEnabled
-            ? [{ value: 'achievements' as const, label: t('game.achievements') }]
+            ? [
+                {
+                  value: 'achievements' as const,
+                  label: t('game.achievements'),
+                },
+              ]
             : []),
         ]}
         onChange={setSection}
@@ -64,19 +77,20 @@ function useDayFacts(days: number): DayFactsExt[] {
   return (
     useQuery(
       async (r) => {
-        const [diary, body, workouts, sleep, checkins, habits, habitLogs, foods] = await Promise.all([
-          r.diary.byDateRange(from, to),
-          r.body.byDateRange(from, to),
-          r.workouts.byDateRange(from, to),
-          r.sleep.byDateRange(from, to),
-          r.checkins.byDateRange(from, to),
-          r.habits.all(),
-          r.habitLogs.byDateRange(from, to),
-          r.foods.all(),
-        ]);
+        const [diary, body, workouts, sleep, checkins, habits, habitLogs, foods] =
+          await Promise.all([
+            r.diary.byDateRange(from, to),
+            r.body.byDateRange(from, to),
+            r.workouts.byDateRange(from, to),
+            r.sleep.byDateRange(from, to),
+            r.checkins.byDateRange(from, to),
+            r.habits.all(),
+            r.habitLogs.byDateRange(from, to),
+            r.foods.all(),
+          ]);
 
         const novaById = new Map(foods.map((f) => [f.id, f.novaGroup]));
-        const activeHabits = habits.filter((h) => !h.archived);
+        const activeHabits = habits.filter((h) => !h.archived && h.polarity !== 'quit');
         const dates = lastNDays(days, to);
 
         return dates.map<DayFactsExt>((date) => {
@@ -84,6 +98,14 @@ function useDayFacts(days: number): DayFactsExt[] {
           const totals = sumEntries(entries);
           const dayWorkouts = workouts.filter((w) => w.date === date && w.finishedAt);
           const dayLogs = habitLogs.filter((l) => l.date === date);
+          const scheduled = activeHabits.filter((h) =>
+            isScheduledOn(
+              h,
+              date,
+              habitLogs.filter((l) => l.habitId === h.id),
+              settings.firstDayOfWeek,
+            ),
+          );
           const checkin = checkins.find((c) => c.date === date);
 
           let group4Grams = 0;
@@ -112,15 +134,20 @@ function useDayFacts(days: number): DayFactsExt[] {
             workouts: dayWorkouts.length,
             volumeKg: dayWorkouts.reduce((s, w) => s + w.totalVolumeKg, 0),
             sleepMin: sleep.find((s) => s.date === date)?.durationMin,
-            habitsScheduled: activeHabits.length,
-            habitsCompleted: dayLogs.filter((l) => l.completed).length,
+            habitsScheduled: scheduled.length,
+            habitsCompleted: scheduled.filter((h) =>
+              isHabitDone(
+                h,
+                dayLogs.find((l) => l.habitId === h.id),
+              ),
+            ).length,
             nutritionIndex: index,
             steps: checkin?.steps,
             stress: checkin?.stress,
           };
         });
       },
-      [days, from, to],
+      [days, from, to, settings.firstDayOfWeek, settings.targets],
     ) ?? []
   );
 }
@@ -143,7 +170,11 @@ function Charts({ facts }: { facts: DayFactsExt[] }) {
   );
 
   const kcalData = useMemo(
-    () => facts.slice(-60).map((f) => ({ date: f.date, kcal: f.hasDiary ? f.nutrients?.kcal ?? null : null })),
+    () =>
+      facts.slice(-60).map((f) => ({
+        date: f.date,
+        kcal: f.hasDiary ? (f.nutrients?.kcal ?? null) : null,
+      })),
     [facts],
   );
 
@@ -169,6 +200,7 @@ function Charts({ facts }: { facts: DayFactsExt[] }) {
       <section>
         <Label>{t('progress.habitHeatmap')}</Label>
         <HabitHeatmap data={habitData} />
+        <p className="mt-2 text-caption text-muted">{t('progress.habitScopeHint')}</p>
       </section>
     </div>
   );
@@ -178,6 +210,7 @@ function Charts({ facts }: { facts: DayFactsExt[] }) {
 
 function Summaries({ facts }: { facts: DayFactsExt[] }) {
   const { t } = useTranslation();
+  const { units } = useSettings();
   const [period, setPeriod] = useState<7 | 30>(7);
 
   const current = facts.slice(-period) as DayFacts[];
@@ -223,9 +256,21 @@ function Summaries({ facts }: { facts: DayFactsExt[] }) {
           coverage={`${summary.carbG.daysWithData}/${summary.daysInPeriod}`}
         />
         <MetricRow label={t('progress.loggedDays')} value={summary.loggedDays} />
-        <MetricRow label={t('progress.weightChange')} value={summary.weightChangeKg} signedValue />
+        <MetricRow
+          label={t('progress.weightChange')}
+          value={summary.weightChangeKg}
+          formatter={(value) =>
+            `${signed(toDisplay(value, 'mass', units), 1)} ${t(`units.${unitKey('mass', units)}`)}`
+          }
+        />
         <MetricRow label={t('progress.workoutsCount')} value={summary.workouts} />
-        <MetricRow label={t('progress.totalVolume')} value={summary.volumeKg} />
+        <MetricRow
+          label={t('progress.totalVolume')}
+          value={summary.volumeKg}
+          formatter={(value) =>
+            `${num(toDisplay(value, 'mass', units), 1)} ${t(`units.${unitKey('mass', units)}`)}`
+          }
+        />
         <MetricRow
           label={t('progress.avgSleep')}
           value={summary.sleepMin.average}
@@ -239,6 +284,7 @@ function Summaries({ facts }: { facts: DayFactsExt[] }) {
           coverage={`${summary.nutritionIndex.daysWithData}/${summary.daysInPeriod}`}
         />
       </dl>
+      <p className="text-caption text-muted">{t('progress.habitScopeHint')}</p>
     </div>
   );
 }
@@ -357,12 +403,18 @@ function Achievements() {
       <section>
         <Label>
           {t('game.achievements')} ·{' '}
-          {t('game.unlockedCount', { unlocked: unlocked.size, total: statuses.length })}
+          {t('game.unlockedCount', {
+            unlocked: unlocked.size,
+            total: statuses.length,
+          })}
         </Label>
         <ul className="mt-2 divide-y divide-hairline">
           {statuses.map((s) => (
             <li key={s.def.key} className="flex items-center gap-3 py-2">
-              <span className={`w-4 ${s.unlocked ? 'text-accent' : 'text-hairline'}`} aria-hidden="true">
+              <span
+                className={`w-4 ${s.unlocked ? 'text-accent' : 'text-hairline'}`}
+                aria-hidden="true"
+              >
                 {s.unlocked ? '◆' : '◇'}
               </span>
               <span className="min-w-0 flex-1">

@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
+import { useSaveAction } from '@/app/useSaveAction';
 import { useQuery } from '@/data/repositories/hooks';
 import { computeRecipe } from '@/domain/nutrition/recipe';
 import type { Nutrients } from '@/domain/model';
@@ -24,6 +25,7 @@ export function RecipeEditorSheet({
 }) {
   const { t } = useTranslation();
   const repos = useRepos();
+  const saving = useSaveAction();
   const recipe = useQuery(
     (r) => (recipeId ? r.recipes.get(recipeId) : Promise.resolve(undefined)),
     [recipeId],
@@ -34,6 +36,18 @@ export function RecipeEditorSheet({
   const [components, setComponents] = useState<ComponentRow[]>([]);
   const [yieldGrams, setYieldGrams] = useState<number | ''>('');
   const [servings, setServings] = useState<number | ''>(4);
+  const dirty =
+    name !== (recipe?.name ?? '') ||
+    JSON.stringify(components) !== JSON.stringify(recipe?.components ?? []) ||
+    yieldGrams !== (recipe?.yieldGrams ?? '') ||
+    servings !== (recipe?.servings ?? 4);
+  const valid =
+    (!recipeId || Boolean(recipe)) &&
+    Boolean(name.trim()) &&
+    components.length > 0 &&
+    components.every((component) => component.grams > 0) &&
+    (yieldGrams === '' || yieldGrams > 0) &&
+    (servings === '' || servings > 0);
 
   useEffect(() => {
     setName(recipe?.name ?? '');
@@ -52,6 +66,7 @@ export function RecipeEditorSheet({
   );
 
   const save = async () => {
+    if (!valid) return;
     const payload = {
       name: name.trim(),
       components,
@@ -68,20 +83,28 @@ export function RecipeEditorSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => !saving.busy && onClose()}
+      dirty={dirty}
+      onSave={valid ? () => void saving.run(save) : undefined}
       title={t('food.recipeTitle')}
       footer={
         <Button
           variant="primary"
           full
-          disabled={!name.trim() || components.length === 0}
-          onClick={() => void save()}
+          disabled={!valid || saving.busy}
+          onClick={() => void saving.run(save)}
         >
           {t('common.save')}
         </Button>
       }
     >
-      <TextField value={name} onChange={setName} aria-label={t('common.name')} placeholder={t('common.name')} />
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      <TextField
+        value={name}
+        onChange={setName}
+        aria-label={t('common.name')}
+        placeholder={t('common.name')}
+      />
 
       <div className="mt-4">
         <Label>{t('food.dishComponents')}</Label>

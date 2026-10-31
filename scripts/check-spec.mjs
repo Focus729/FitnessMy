@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BUNDLE_LIMIT_KB = 400;
@@ -35,7 +36,7 @@ async function walk(dir, out = []) {
 /** 1. Импорты Dexie вне data/ (решение 2.9). */
 async function checkDexieImports(files) {
   for (const file of files) {
-    const rel = relative(root, file);
+    const rel = relative(root, file).replaceAll('\\', '/');
     if (rel.startsWith('src/data/')) continue;
     const text = await readFile(file, 'utf8');
     if (/from\s+'dexie(-react-hooks)?'/.test(text) || /from\s+'@\/data\/db\//.test(text)) {
@@ -47,15 +48,21 @@ async function checkDexieImports(files) {
 /** 2. Строковые литералы в JSX вместо ключей i18n (раздел 17). */
 async function checkJsxLiterals(files) {
   for (const file of files) {
-    const rel = relative(root, file);
+    const rel = relative(root, file).replaceAll('\\', '/');
     if (!rel.startsWith('src/screens/') && !rel.startsWith('src/components/')) continue;
     const text = await readFile(file, 'utf8');
-    // Текст между тегами: >Слово из четырёх и более букв<
-    for (const match of text.matchAll(/>\s*([\p{L}][\p{L}\s,.!?-]{3,})\s*</gu)) {
-      const value = match[1]?.trim() ?? '';
-      if (/^[A-Z_]+$/.test(value)) continue;
-      add('средний', 'Строка в JSX вместо ключа i18n', `${rel}: «${value.slice(0, 40)}»`);
-    }
+    // Parse actual JSX text; generic return types such as Promise<void> are not UI copy.
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node) => {
+      if (ts.isJsxText(node)) {
+        const value = node.text.trim();
+        if (/^[\p{L}][\p{L}\s,.!?-]{3,}$/u.test(value) && !/^[A-Z_]+$/.test(value)) {
+          add('средний', 'Строка в JSX вместо ключа i18n', `${rel}: «${value.slice(0, 40)}»`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
   }
 }
 
@@ -74,7 +81,11 @@ async function checkBundle() {
     if (!/\.(js|css)$/.test(name)) continue;
     // Наборы данных и подгружаемые по требованию чанки в лимит не входят.
     if (/^(seed-|charts-|barcode-)/.test(name)) continue;
-    if (/^(Food|Gym|Body|Progress|Settings|Onboarding|ActiveWorkout|WeightChart|ExercisePicker|targets|foodIndex)-/.test(name))
+    if (
+      /^(Food|Gym|Body|Progress|Settings|Onboarding|ActiveWorkout|WeightChart|ExercisePicker|targets|foodIndex)-/.test(
+        name,
+      )
+    )
       continue;
     const buf = await readFile(join(dist, name));
     const gz = gzipSync(buf).length;
@@ -90,31 +101,43 @@ async function checkBundle() {
   }
 }
 
-/** 4. Пять блоков на главном экране (раздел 13). */
+/** Approved direction B replaces the historical five-block count. */
 async function checkTodayBlocks() {
-  const file = resolve(root, 'src/screens/Today.tsx');
-  const text = await readFile(file, 'utf8');
-  // Блоки размечены в разметке комментариями вида {/* N — ... */}
-  const numbered = [...text.matchAll(/\{\/\*\s*(\d)\s*—/g)].map((m) => Number(m[1]));
-  const count = new Set(numbered).size;
-  if (count > 5) {
-    add('высокий', 'На главном экране больше пяти блоков', `найдено ${count}`);
-  } else {
-    add('норма', 'Блоков на главном экране', `${count} из 5`);
+  const text = await readFile(resolve(root, 'src/screens/Today.tsx'), 'utf8');
+  const shell = await readFile(resolve(root, 'src/app/AppShell.tsx'), 'utf8');
+  if (
+    !text.includes('training-hero') ||
+    !text.includes('unfinished') ||
+    !text.includes('nextPlan')
+  ) {
+    add(
+      'высокий',
+      'Training-first hierarchy is missing',
+      'Today must represent active, planned and empty states',
+    );
+  }
+  if (!text.includes('setAddOpen(true)') || !text.includes('/body?section=')) {
+    add('высокий', 'Direct logging actions are missing', 'Keep food and body actions available');
+  }
+  if (!shell.includes('app-nav') || !shell.includes('profiles.switch')) {
+    add('высокий', 'Responsive/profile navigation is missing', 'Verify DESIGN.md direction B');
   }
 }
-
 /** 5. Покрытие domain/ тестами (19.5). */
 function checkCoverage() {
   try {
-    const out = execFileSync('npx', ['vitest', 'run', '--coverage', '--silent'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const out = execFileSync(
+      process.execPath,
+      [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', '--coverage', '--silent'],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     const line = out.split('\n').find((l) => l.includes('All files'));
     const stmts = Number(line?.split('|')[1]?.trim());
-    if (Number.isFinite(stmts) && stmts < 90) {
+    if (!Number.isFinite(stmts) || stmts < 90) {
       add('высокий', 'Покрытие domain/ ниже 90%', `${stmts}%`);
     } else {
       add('норма', 'Покрытие domain/', `${stmts}%`);
@@ -143,7 +166,10 @@ async function run() {
 
   const problems = findings.filter((f) => f.priority !== 'норма' && f.priority !== 'информация');
   process.stdout.write('─'.repeat(60) + '\n');
-  process.stdout.write(problems.length === 0 ? 'Отклонений нет.\n' : `Отклонений: ${problems.length}\n`);
+  if (problems.length) process.exitCode = 1;
+  process.stdout.write(
+    problems.length === 0 ? 'Отклонений нет.\n' : `Отклонений: ${problems.length}\n`,
+  );
 }
 
 run().catch((e) => {

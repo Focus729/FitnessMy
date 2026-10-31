@@ -44,7 +44,7 @@ test('быстрый ввод калорий работает без базы п
   await bootstrap(page, 'Быстро');
 
   await page.getByRole('button', { name: 'Добавить еду' }).click();
-  await page.getByRole('button', { name: 'Быстро' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Быстро', exact: true }).click();
   await page.getByLabel('Калории').fill('450');
   await page.getByRole('button', { name: 'Сохранить' }).click();
 

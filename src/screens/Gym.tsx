@@ -1,3 +1,4 @@
+import { toDisplay, unitKey } from '@/lib/units';
 /**
  * Вкладка «Зал» — тренировки, программы (10.2), упражнения (7.2),
  * кардио (10.4), история и рекорды (10.5).
@@ -5,15 +6,18 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useRouteState } from '@/app/navigation';
+import { useSaveAction } from '@/app/useSaveAction';
+import { MeasureField } from '@/components/MeasureField';
 import { useRepos } from '@/data/repositories/context';
 import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
 import { ROUTINE_TEMPLATES } from '@/data/seed/routines';
 import type { Exercise, Routine } from '@/domain/model';
 import { epley1RM, personalRecords } from '@/domain/training/oneRm';
-import { estimateKcal, paceMinPerKm } from '@/domain/training/met';
+import { estimateKcal } from '@/domain/training/met';
 import type { CardioKind } from '@/domain/training/met';
-import { nowIso, today as todayFn, toLocalTime } from '@/lib/date';
+import { today as todayFn, toLocalTime } from '@/lib/date';
 import { dateShort, durationLong, num } from '@/lib/format';
 import { uuid } from '@/lib/id';
 import {
@@ -39,7 +43,13 @@ type Section = 'workouts' | 'plan' | 'routines' | 'exercises' | 'cardio';
 
 export function GymScreen() {
   const { t } = useTranslation();
-  const [section, setSection] = useState<Section>('workouts');
+  const [section, setSection] = useRouteState<Section>('section', 'workouts', [
+    'workouts',
+    'plan',
+    'routines',
+    'exercises',
+    'cardio',
+  ]);
 
   return (
     <div className="space-y-4">
@@ -67,6 +77,7 @@ export function GymScreen() {
 /* ───────────────────────── История тренировок (10.5) ───────────────────────── */
 
 function Workouts() {
+  const settings = useSettings();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const repos = useRepos();
@@ -75,38 +86,21 @@ function Workouts() {
   const routines = useQuery((r) => r.routines.all()) ?? [];
   const [startOpen, setStartOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
+  const saving = useSaveAction();
 
   const startEmpty = async () => {
-    const workout = await repos.workouts.create({
-      date: todayFn(),
-      startedAt: nowIso(),
-      name: t('gym.startEmpty'),
-      totalVolumeKg: 0,
-      totalSets: 0,
-      exerciseOrder: [],
-    });
+    const workout = await repos.workouts.startFree(t('gym.startEmpty'));
     navigate(`/workout/${workout.id}`);
   };
 
   const startFromRoutine = async (routine: Routine) => {
-    const index = routine.nextDayIndex ?? 0;
-    const day = routine.days[index % Math.max(1, routine.days.length)];
-    const workout = await repos.workouts.create({
-      date: todayFn(),
-      startedAt: nowIso(),
-      routineId: routine.id,
-      routineDayId: day?.id,
-      name: day ? `${routine.name} · ${day.name}` : routine.name,
-      totalVolumeKg: 0,
-      totalSets: 0,
-      exerciseOrder: (day?.items ?? []).sort((a, b) => a.order - b.order).map((i) => i.exerciseId),
-    });
-    await repos.routines.update(routine.id, { nextDayIndex: index + 1 });
+    const workout = await repos.workouts.startRoutine(routine.id);
     navigate(`/workout/${workout.id}`);
   };
 
   return (
     <div className="space-y-3">
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       {unfinished ? (
         <Panel title={t('gym.unfinishedTitle')}>
           <p className="text-caption text-muted">
@@ -116,7 +110,16 @@ function Workouts() {
             <Button variant="primary" onClick={() => navigate(`/workout/${unfinished.id}`)}>
               {t('common.continue')}
             </Button>
-            <Button variant="danger" onClick={() => void repos.workouts.remove(unfinished.id)}>
+            <Button
+              variant="danger"
+              disabled={saving.busy}
+              onClick={() =>
+                void saving.run(async () => {
+                  await repos.workouts.softDeleteWorkout(unfinished.id);
+                  setUndoId(unfinished.id);
+                })
+              }
+            >
               {t('gym.discard')}
             </Button>
           </div>
@@ -124,7 +127,12 @@ function Workouts() {
       ) : null}
 
       <div className="flex gap-2">
-        <Button variant="primary" full onClick={() => void startEmpty()}>
+        <Button
+          variant="primary"
+          full
+          disabled={saving.busy}
+          onClick={() => void saving.run(startEmpty)}
+        >
           {t('gym.startEmpty')}
         </Button>
         <Button full disabled={routines.length === 0} onClick={() => setStartOpen(true)}>
@@ -142,8 +150,10 @@ function Workouts() {
               <SwipeToDelete
                 deleteLabel={t('gym.deleteWorkout')}
                 onDelete={() => {
-                  void repos.workouts.softDeleteWorkout(w.id);
-                  setUndoId(w.id);
+                  void saving.run(async () => {
+                    await repos.workouts.softDeleteWorkout(w.id);
+                    setUndoId(w.id);
+                  });
                 }}
               >
                 <button
@@ -158,7 +168,8 @@ function Workouts() {
                   </span>
                   <span className="tnum block text-caption text-muted">
                     {t('gym.sets', { count: w.totalSets })} · {t('gym.volume')}{' '}
-                    {num(w.totalVolumeKg)} {t('units.kg')}
+                    {num(toDisplay(w.totalVolumeKg, 'mass', settings.units), 1)}{' '}
+                    {t(`units.${unitKey('mass', settings.units)}`)}
                   </span>
                 </button>
               </SwipeToDelete>
@@ -172,8 +183,10 @@ function Workouts() {
           message={t('gym.workoutDeleted')}
           actionLabel={t('common.undo')}
           onAction={() => {
-            void repos.workouts.restoreWorkout(undoId);
-            setUndoId(null);
+            void saving.run(async () => {
+              await repos.workouts.restoreWorkout(undoId);
+              setUndoId(null);
+            });
           }}
           onExpire={() => setUndoId(null)}
         />
@@ -188,7 +201,7 @@ function Workouts() {
                 className="flex min-h-touch w-full items-center py-2 text-left"
                 onClick={() => {
                   setStartOpen(false);
-                  void startFromRoutine(routine);
+                  void saving.run(() => startFromRoutine(routine));
                 }}
               >
                 <span className="flex-1 truncate text-body">{routine.name}</span>
@@ -214,6 +227,7 @@ function Routines() {
   const [undoRoutine, setUndoRoutine] = useState<string | null>(null);
   /** Снимок программы до сброса — чтобы правки можно было вернуть (задача 4.4). */
   const [resetSnapshot, setResetSnapshot] = useState<Routine | null>(null);
+  const saving = useSaveAction();
 
   /**
    * Возврат состава к исходному шаблону. Шаблон живёт константой в коде и
@@ -222,7 +236,6 @@ function Routines() {
   const resetToTemplate = async (routine: Routine) => {
     const template = ROUTINE_TEMPLATES.find((x) => x.key === routine.templateKey);
     if (!template) return;
-    setResetSnapshot(routine);
     await repos.routines.update(routine.id, {
       days: template.days.map((day, i) => ({
         id: uuid(),
@@ -240,6 +253,7 @@ function Routines() {
         })),
       })),
     });
+    setResetSnapshot(routine);
     setEditing(null);
   };
 
@@ -273,6 +287,7 @@ function Routines() {
 
   return (
     <div className="space-y-3">
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       <Button full onClick={() => setTemplatesOpen(true)}>
         {t('gym.routineFromTemplate')}
       </Button>
@@ -297,10 +312,13 @@ function Routines() {
               type="button"
               aria-label={t('common.delete')}
               className="tappable justify-center px-2 text-muted"
-              onClick={() => {
-                void repos.routines.remove(routine.id);
-                setUndoRoutine(routine.id);
-              }}
+              disabled={saving.busy}
+              onClick={() =>
+                void saving.run(async () => {
+                  await repos.routines.remove(routine.id);
+                  setUndoRoutine(routine.id);
+                })
+              }
             >
               <span aria-hidden="true">×</span>
             </button>
@@ -312,17 +330,19 @@ function Routines() {
         open={editing != null}
         routine={editing ?? undefined}
         onClose={() => setEditing(null)}
-        onResetToTemplate={(routine) => void resetToTemplate(routine)}
+        onResetToTemplate={resetToTemplate}
       />
 
       {undoRoutine ? (
         <UndoToast
           message={t('common.deleted')}
           actionLabel={t('common.undo')}
-          onAction={() => {
-            void repos.routines.restore(undoRoutine);
-            setUndoRoutine(null);
-          }}
+          onAction={() =>
+            void saving.run(async () => {
+              await repos.routines.restore(undoRoutine);
+              setUndoRoutine(null);
+            })
+          }
           onExpire={() => setUndoRoutine(null)}
         />
       ) : null}
@@ -331,13 +351,15 @@ function Routines() {
         <UndoToast
           message={t('gym.routineReset')}
           actionLabel={t('common.undo')}
-          onAction={() => {
-            void repos.routines.update(resetSnapshot.id, {
-              name: resetSnapshot.name,
-              days: resetSnapshot.days,
-            });
-            setResetSnapshot(null);
-          }}
+          onAction={() =>
+            void saving.run(async () => {
+              await repos.routines.update(resetSnapshot.id, {
+                name: resetSnapshot.name,
+                days: resetSnapshot.days,
+              });
+              setResetSnapshot(null);
+            })
+          }
           onExpire={() => setResetSnapshot(null)}
         />
       ) : null}
@@ -353,7 +375,8 @@ function Routines() {
               <button
                 type="button"
                 className="w-full py-3 text-left"
-                onClick={() => void copyTemplate(template.key)}
+                disabled={saving.busy}
+                onClick={() => void saving.run(() => copyTemplate(template.key))}
               >
                 <span className="block text-body">
                   {settings.locale === 'ru' ? template.nameRu : template.nameEn}
@@ -398,14 +421,13 @@ function ExerciseLibrary() {
 function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: () => void }) {
   const { t } = useTranslation();
   const settings = useSettings();
-  const sets = useQueryWithDefault(
-    (r) => r.workoutSets.byExercise(exercise.id, 200),
-    EMPTY,
-    [exercise.id],
-  );
+  const sets = useQueryWithDefault((r) => r.workoutSets.byExercise(exercise.id, 200), EMPTY, [
+    exercise.id,
+  ]);
   const records = useMemo(() => personalRecords(sets), [sets]);
 
-  const name = settings.locale === 'ru' && exercise.nameI18n?.ru ? exercise.nameI18n.ru : exercise.name;
+  const name =
+    settings.locale === 'ru' && exercise.nameI18n?.ru ? exercise.nameI18n.ru : exercise.name;
 
   return (
     <Sheet open onClose={onClose} title={name}>
@@ -423,15 +445,15 @@ function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: ()
           <div className="grid grid-cols-3 gap-3">
             <MetricValue
               label={t('gym.recordWeight')}
-              value={num(records.maxWeightKg)}
-              unit={t('units.kg')}
+              value={num(toDisplay(records.maxWeightKg, 'mass', settings.units), 1)}
+              unit={t(`units.${unitKey('mass', settings.units)}`)}
               size="lg"
             />
             <MetricValue label={t('gym.recordReps')} value={records.maxReps} size="lg" />
             <MetricValue
               label={t('gym.record1Rm')}
-              value={num(records.max1RM)}
-              unit={t('units.kg')}
+              value={num(toDisplay(records.max1RM, 'mass', settings.units), 1)}
+              unit={t(`units.${unitKey('mass', settings.units)}`)}
               size="lg"
             />
           </div>
@@ -456,10 +478,21 @@ function ExerciseDetail({ exercise, onClose }: { exercise: Exercise; onClose: ()
             {sets.slice(0, 30).map((s) => (
               <li key={s.id} className="flex justify-between py-1">
                 <span>
-                  {num(s.weightKg)} {t('units.kg')} × {s.reps}
+                  {num(toDisplay(s.weightKg, 'mass', settings.units), 1)}{' '}
+                  {t(`units.${unitKey('mass', settings.units)}`)} × {s.reps}
                 </span>
                 <span className="text-muted">
-                  {t('gym.oneRmEstimate', { value: num(s.estimated1RM || epley1RM(s.weightKg, s.reps)) })}
+                  {t('gym.oneRmEstimate', {
+                    unit: t(`units.${unitKey('mass', settings.units)}`),
+                    value: num(
+                      toDisplay(
+                        s.estimated1RM || epley1RM(s.weightKg, s.reps),
+                        'mass',
+                        settings.units,
+                      ),
+                      1,
+                    ),
+                  })}
                 </span>
               </li>
             ))}
@@ -477,6 +510,9 @@ const CARDIO_KINDS: CardioKind[] = ['run', 'walk', 'bike', 'swim', 'row', 'ellip
 function Cardio() {
   const { t } = useTranslation();
   const repos = useRepos();
+  const { units } = useSettings();
+  const saving = useSaveAction();
+  const [deletedId, setDeletedId] = useState<string | null>(null);
   const sessions = useQuery((r) => r.cardio.all()) ?? [];
   const weight = useQuery((r) => r.body.latestWeight());
   const [open, setOpen] = useState(false);
@@ -487,14 +523,29 @@ function Cardio() {
 
   const durationSec = (minutes === '' ? 0 : minutes) * 60;
   const distanceM = distanceKm === '' ? undefined : distanceKm * 1000;
+  const valid =
+    minutes !== '' &&
+    minutes > 0 &&
+    minutes <= 1440 &&
+    (distanceKm === '' || (distanceKm > 0 && distanceKm <= 1000)) &&
+    (hr === '' || (Number.isInteger(hr) && hr >= 20 && hr <= 250));
   const kcal = estimateKcal({
     kind,
     durationSec,
     weightKg: weight?.weightKg ?? 75,
     distanceM,
   });
+  const close = () => {
+    if (saving.busy) return;
+    setOpen(false);
+    setKind('run');
+    setMinutes(30);
+    setDistanceKm('');
+    setHr('');
+  };
 
   const save = async () => {
+    if (!valid) return;
     await repos.cardio.create({
       date: todayFn(),
       time: toLocalTime(),
@@ -505,6 +556,9 @@ function Cardio() {
       kcal,
     });
     setOpen(false);
+    setMinutes(30);
+    setDistanceKm('');
+    setHr('');
   };
 
   return (
@@ -523,9 +577,11 @@ function Cardio() {
                 <span className="block text-body">{t(`gym.cardioKinds.${s.kind}`)}</span>
                 <span className="tnum block text-caption text-muted">
                   {durationLong(s.durationSec / 60)}
-                  {s.distanceM ? ` · ${num(s.distanceM / 1000, 2)} ${t('units.km')}` : ''}
                   {s.distanceM
-                    ? ` · ${t('gym.pace', { value: paceMinPerKm(s.durationSec, s.distanceM) ?? 0 })}`
+                    ? ` · ${num(toDisplay(s.distanceM / 1000, 'distance', units), 2)} ${t(`units.${unitKey('distance', units)}`)}`
+                    : ''}
+                  {s.distanceM
+                    ? ` · ${t(units === 'imperial' ? 'gym.paceImperial' : 'gym.pace', { value: num((s.durationSec / 60 / (s.distanceM / 1000)) * (units === 'imperial' ? 1.609344 : 1), 2) })}`
                     : ''}
                 </span>
               </span>
@@ -534,7 +590,12 @@ function Cardio() {
                 type="button"
                 aria-label={t('common.delete')}
                 className="tappable justify-center px-1 text-muted"
-                onClick={() => void repos.cardio.remove(s.id)}
+                onClick={() =>
+                  void saving.run(async () => {
+                    await repos.cardio.remove(s.id);
+                    setDeletedId(s.id);
+                  })
+                }
               >
                 <span aria-hidden="true">×</span>
               </button>
@@ -542,16 +603,44 @@ function Cardio() {
           ))}
       </ul>
 
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      {deletedId ? (
+        <UndoToast
+          message={t('common.deleted')}
+          actionLabel={t('common.undo')}
+          onAction={() =>
+            void saving.run(async () => {
+              await repos.cardio.restore(deletedId);
+              setDeletedId(null);
+            })
+          }
+          onExpire={() => setDeletedId(null)}
+        />
+      ) : null}
+
       <Sheet
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
+        dirty={kind !== 'run' || minutes !== 30 || distanceKm !== '' || hr !== ''}
+        onSave={valid ? () => void saving.run(save) : undefined}
         title={t('gym.cardioNew')}
         footer={
-          <Button variant="primary" full onClick={() => void save()}>
+          <Button
+            variant="primary"
+            full
+            disabled={!valid || saving.busy}
+            onClick={() => void saving.run(save)}
+          >
             {t('common.save')}
           </Button>
         }
       >
+        {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+        {!valid ? (
+          <p role="alert" className="text-caption text-over">
+            {t('gym.cardioBounds')}
+          </p>
+        ) : null}
         <div className="no-scrollbar -mx-4 flex gap-1 overflow-x-auto px-4">
           {CARDIO_KINDS.map((k) => (
             <button
@@ -571,13 +660,19 @@ function Cardio() {
           <div>
             <SectionHeader title={t('gym.duration')} />
             <div className="mt-1">
-              <NumberField value={minutes} onChange={setMinutes} suffix={t('units.min')} aria-label={t('gym.duration')} />
+              <NumberField
+                value={minutes}
+                onChange={setMinutes}
+                suffix={t('units.min')}
+                aria-label={t('gym.duration')}
+              />
             </div>
           </div>
           <div>
             <SectionHeader title={t('gym.distance')} />
             <div className="mt-1">
-              <NumberField
+              <MeasureField
+                measure="distance"
                 value={distanceKm}
                 onChange={setDistanceKm}
                 suffix={t('units.km')}

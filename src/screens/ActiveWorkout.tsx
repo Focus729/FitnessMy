@@ -1,3 +1,4 @@
+import { toDisplay, unitKey } from '@/lib/units';
 /**
  * Экран активной тренировки — раздел 10.1.
  *
@@ -11,12 +12,13 @@
  * Состояние пишется в IndexedDB после каждого действия: закрытие вкладки,
  * разрядка телефона и перезагрузка тренировку не теряют.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
 import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
+import { useSaveAction } from '@/app/useSaveAction';
 import { award } from '@/app/gamification';
 import type { Exercise, SetType, WorkoutSet } from '@/domain/model';
 import { personalRecords, rirFromRpe } from '@/domain/training/oneRm';
@@ -25,7 +27,7 @@ import { prefillFromLast, suggestProgression } from '@/domain/training/progressi
 import { planPlates, summarizePlates } from '@/domain/training/plates';
 import { durationShort, num } from '@/lib/format';
 import { uuid } from '@/lib/id';
-import { Button, Segmented, Sheet } from '@/design-system/primitives';
+import { Button, Segmented, Sheet, TextField } from '@/design-system/primitives';
 import { RestTimer } from '@/components/RestTimer';
 import { SetsTable } from '@/components/SetsTable';
 import { ExercisePickerSheet } from '@/components/ExercisePickerSheet';
@@ -40,7 +42,10 @@ export function ActiveWorkoutScreen() {
   const repos = useRepos();
   const settings = useSettings();
 
-  const workout = useQuery((r) => (workoutId ? r.workouts.get(workoutId) : Promise.resolve(undefined)), [workoutId]);
+  const workout = useQuery(
+    (r) => (workoutId ? r.workouts.get(workoutId) : Promise.resolve(undefined)),
+    [workoutId],
+  );
   const sets = useQueryWithDefault(
     (r) => (workoutId ? r.workoutSets.byWorkout(workoutId) : Promise.resolve([])),
     EMPTY,
@@ -53,12 +58,25 @@ export function ActiveWorkoutScreen() {
   );
 
   const [openExerciseId, setOpenExerciseId] = useState<string | null>(null);
-  const [restSec, setRestSec] = useState<number | null>(null);
+  const timerKey = `lenta.rest.${repos.profileId}.${workoutId}`;
+  const [restDeadline, setRestDeadline] = useState<number | null>(() => {
+    const saved = Number(localStorage.getItem(timerKey));
+    return Number.isFinite(saved) && saved > Date.now() ? saved : null;
+  });
+  const setRest = (deadline: number | null) => {
+    setRestDeadline(deadline);
+    if (deadline == null) localStorage.removeItem(timerKey);
+    else localStorage.setItem(timerKey, String(deadline));
+  };
+  const finishing = useRef(false);
+  const [saveError, setSaveError] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [plateFor, setPlateFor] = useState<{ weightKg: number; barKg: number } | null>(null);
+  const [plateFor, setPlateFor] = useState<{
+    weightKg: number;
+    barKg: number;
+  } | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   /** Упражнения, добавленные сверх программы прямо в зале (задача 4, пункт 2). */
-  const [addedOffPlan, setAddedOffPlan] = useState<string[]>([]);
   const [offPlanOpen, setOffPlanOpen] = useState(false);
 
   const byId = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
@@ -74,10 +92,6 @@ export function ActiveWorkoutScreen() {
       exerciseOrder: [...order.filter((id) => id !== exercise.id), exercise.id],
     });
     setOpenExerciseId(exercise.id);
-    // Разовое добавление НЕ меняет программу: запоминаем и спросим при завершении.
-    if (workout.routineId && !plannedExerciseIds.includes(exercise.id)) {
-      setAddedOffPlan((cur) => (cur.includes(exercise.id) ? cur : [...cur, exercise.id]));
-    }
   };
 
   /** Упражнения, заложенные программой на этот день. */
@@ -85,6 +99,8 @@ export function ActiveWorkoutScreen() {
     const day = routine?.days.find((d) => d.id === workout?.routineDayId);
     return (day?.items ?? []).map((i) => i.exerciseId);
   }, [routine, workout?.routineDayId]);
+  // Derive from persisted order so reload does not lose the routine-review prompt.
+  const addedOffPlan = routine ? order.filter((id) => !plannedExerciseIds.includes(id)) : [];
 
   /** Закрепить добавленные упражнения в программе — по явному согласию. */
   const keepInRoutine = async () => {
@@ -124,13 +140,22 @@ export function ActiveWorkoutScreen() {
   };
 
   const finish = async (feel?: 1 | 2 | 3 | 4 | 5) => {
-    if (!workout) return;
-    await repos.workouts.finishWorkout(workout.id, feel ? { feelRating: feel } : undefined);
-    await award(repos, 'workoutFinished', workout.date, workout.id);
-    // Если во время тренировки добавляли упражнения не из программы —
-    // предложим закрепить их в программе (задача 4, пункт 2).
-    if (workout.routineId && addedOffPlan.length > 0) setOffPlanOpen(true);
-    else navigate('/gym');
+    if (!workout || finishing.current) return;
+    finishing.current = true;
+    setSaveError(false);
+    try {
+      await repos.workouts.finishWorkout(workout.id, feel ? { feelRating: feel } : undefined);
+      setRest(null);
+      await award(repos, 'workoutFinished', workout.date, workout.id);
+      // Если во время тренировки добавляли упражнения не из программы —
+      // предложим закрепить их в программе (задача 4, пункт 2).
+      if (workout.routineId && addedOffPlan.length > 0) setOffPlanOpen(true);
+      else navigate('/gym');
+    } catch {
+      setSaveError(true);
+    } finally {
+      finishing.current = false;
+    }
   };
 
   if (!workout) return null;
@@ -138,13 +163,16 @@ export function ActiveWorkoutScreen() {
   const elapsedSec = Math.floor((Date.now() - new Date(workout.startedAt).getTime()) / 1000);
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-28 pt-3">
-      {restSec != null ? (
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col px-4 pb-28 pt-3">
+      {saveError ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      {restDeadline != null ? (
         <RestTimer
-          seconds={restSec}
+          key={restDeadline}
+          deadline={restDeadline}
+          onDeadlineChange={setRest}
           vibrate={settings.restTimer.vibrate}
           sound={settings.restTimer.sound}
-          onClose={() => setRestSec(null)}
+          onClose={() => setRest(null)}
         />
       ) : null}
 
@@ -160,9 +188,27 @@ export function ActiveWorkoutScreen() {
         <h1 className="text-section">{workout.name}</h1>
         <span className="tnum text-caption text-muted">{durationShort(elapsedSec)}</span>
       </header>
+      <p className="mt-3 text-caption text-muted">
+        {t('gym.sets', { count: sets.filter((set) => set.isCompleted).length })} / {sets.length}
+      </p>
+      <progress
+        className="workout-progress mt-2 w-full"
+        aria-label={t('gym.workouts')}
+        value={sets.filter((set) => set.isCompleted).length}
+        max={Math.max(1, sets.length)}
+      />
+      <TextField
+        className="mt-3"
+        value={workout.notes ?? ''}
+        aria-label={t('common.note')}
+        placeholder={t('common.note')}
+        onChange={(notes) => {
+          void repos.workouts.updateWorkout(workout.id, { notes }).catch(() => setSaveError(true));
+        }}
+      />
 
       <ul className="mt-4 space-y-3">
-        {order.map((exerciseId) => {
+        {order.map((exerciseId, exerciseIndex) => {
           const exercise = byId.get(exerciseId);
           if (!exercise) return null;
           const open = openExerciseId === exerciseId;
@@ -186,18 +232,29 @@ export function ActiveWorkoutScreen() {
               </button>
 
               {open ? (
-                <ExercisePanel
-                  workoutId={workout.id}
-                  exercise={exercise}
-                  sets={exerciseSets}
-                  onRest={(sec) => setRestSec(sec)}
-                  onPlates={(weightKg) =>
-                    setPlateFor({
-                      weightKg,
-                      barKg: exercise.barWeightKg ?? settings.plates.barKg,
-                    })
-                  }
-                />
+                <>
+                  <ExercisePanel
+                    workoutId={workout.id}
+                    exercise={exercise}
+                    sets={exerciseSets}
+                    onRest={(sec) => setRest(Date.now() + sec * 1000)}
+                    onPlates={(weightKg) =>
+                      setPlateFor({
+                        weightKg,
+                        barKg: exercise.barWeightKg ?? settings.plates.barKg,
+                      })
+                    }
+                  />
+                  {order[exerciseIndex + 1] ? (
+                    <Button
+                      full
+                      className="mb-3"
+                      onClick={() => setOpenExerciseId(order[exerciseIndex + 1] as string)}
+                    >
+                      {t('common.next')} · {byId.get(order[exerciseIndex + 1] as string)?.name}
+                    </Button>
+                  ) : null}
+                </>
               ) : null}
             </li>
           );
@@ -269,7 +326,11 @@ export function ActiveWorkoutScreen() {
         <p className="tnum text-caption text-muted">
           {t('gym.finishSummary', {
             sets: t('gym.sets', { count: recalcWorkoutTotals(sets).totalSets }),
-            volume: num(recalcWorkoutTotals(sets).totalVolumeKg),
+            volume: num(
+              toDisplay(recalcWorkoutTotals(sets).totalVolumeKg, 'mass', settings.units),
+              1,
+            ),
+            unit: t(`units.${unitKey('mass', settings.units)}`),
             duration: durationShort(elapsedSec),
           })}
         </p>
@@ -279,7 +340,10 @@ export function ActiveWorkoutScreen() {
             <Segmented
               ariaLabel={t('gym.feelRating')}
               value={0}
-              options={[1, 2, 3, 4, 5].map((v) => ({ value: v, label: String(v) }))}
+              options={[1, 2, 3, 4, 5].map((v) => ({
+                value: v,
+                label: String(v),
+              }))}
               onChange={(v) => void finish(v as 1 | 2 | 3 | 4 | 5)}
             />
           </div>
@@ -311,11 +375,11 @@ function ExercisePanel({
   const repos = useRepos();
   const settings = useSettings();
 
-  const lastSets = useQueryWithDefault(
+  const loadedLastSets = useQuery(
     (r) => r.workoutSets.lastSessionSets(exercise.id, workoutId),
-    EMPTY,
     [exercise.id, workoutId],
   );
+  const lastSets = loadedLastSets ?? EMPTY;
   const recentTopWeights = useQueryWithDefault(
     (r) => r.workoutSets.recentTopWeights(exercise.id, 3),
     EMPTY,
@@ -333,12 +397,13 @@ function ExercisePanel({
       }),
     [lastSets, exercise.bodyPart, recentTopWeights],
   );
+  const saving = useSaveAction();
 
   // Автоматически создаём первый подход с предзаполненными значениями.
   const ensureSet = useCallback(async () => {
-    if (sets.length > 0) return;
+    if (sets.length > 0 || loadedLastSets === undefined) return;
     const prefill = prefillFromLast(lastSets, 0);
-    await repos.workoutSets.create({
+    await repos.workoutSets.ensureInitial({
       workoutId,
       exerciseId: exercise.id,
       order: 0,
@@ -348,10 +413,12 @@ function ExercisePanel({
       isCompleted: false,
       estimated1RM: 0,
     });
-  }, [sets.length, lastSets, repos, workoutId, exercise.id]);
+  }, [sets.length, lastSets, loadedLastSets, repos, workoutId, exercise.id]);
 
   useEffect(() => {
-    void ensureSet();
+    void saving.run(ensureSet);
+    // ensureInitial is atomic even across StrictMode mounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ensureSet]);
 
   const addSet = async (type: SetType = 'normal') => {
@@ -382,17 +449,29 @@ function ExercisePanel({
 
   return (
     <div className="px-3 pb-3">
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       {/* Подсказка прогрессии — строкой, не модальным окном (10.3) */}
       {advice.kind !== 'noData' ? (
         <p className="mb-2 text-caption text-muted">
           {advice.kind === 'deload'
-            ? t('gym.progressionHint.deload', { weight: num(advice.toKg) })
+            ? t('gym.progressionHint.deload', {
+                weight: num(toDisplay(advice.toKg, 'mass', settings.units), 1),
+                unit: t(`units.${unitKey('mass', settings.units)}`),
+              })
             : t(`gym.progressionHint.${advice.kind}`, {
                 prev: lastSets
                   .filter((s) => s.type !== 'warmup')
-                  .map((s) => `${num(s.weightKg)}×${s.reps}`)
+                  .map((s) => `${num(toDisplay(s.weightKg, 'mass', settings.units), 1)}×${s.reps}`)
                   .join(', '),
-                weight: num(advice.kind === 'increaseWeight' ? advice.toKg : advice.weightKg),
+                weight: num(
+                  toDisplay(
+                    advice.kind === 'increaseWeight' ? advice.toKg : advice.weightKg,
+                    'mass',
+                    settings.units,
+                  ),
+                  1,
+                ),
+                unit: t(`units.${unitKey('mass', settings.units)}`),
                 reps: advice.kind === 'repeat' ? '' : advice.reps,
               })}
         </p>
@@ -402,15 +481,24 @@ function ExercisePanel({
         mode="active"
         sets={sets}
         lastSets={lastSets}
-        onChangeSet={(setId, patch) => void repos.workouts.updateSet(setId, patch)}
-        onToggleComplete={(set) => void complete(set)}
-        onAddSet={(type) => void addSet(type)}
+        onChangeSet={(setId, patch) => {
+          void repos.workouts.updateSet(setId, patch).catch(() =>
+            saving.run(async () => {
+              throw new Error('write');
+            }),
+          );
+        }}
+        onToggleComplete={(set) => void saving.run(() => complete(set))}
+        onAddSet={(type) => void saving.run(() => addSet(type))}
         onPlates={onPlates}
       />
 
       {records.max1RM > 0 ? (
         <p className="tnum mt-2 text-caption text-muted">
-          {t('gym.oneRmEstimate', { value: num(records.max1RM) })}
+          {t('gym.oneRmEstimate', {
+            unit: t(`units.${unitKey('mass', settings.units)}`),
+            value: num(toDisplay(records.max1RM, 'mass', settings.units), 1),
+          })}
           {sets.some((s) => s.rpe != null)
             ? ` · ${t('gym.rir', { value: rirFromRpe(sets.find((s) => s.rpe != null)?.rpe ?? 10) })}`
             : ''}
@@ -432,6 +520,7 @@ function PlateSheet({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const settings = useSettings();
   if (!plan) return null;
 
   const result = planPlates(plan.weightKg, plan.barKg, available);
@@ -439,15 +528,22 @@ function PlateSheet({
 
   return (
     <Sheet open onClose={onClose} title={t('gym.plateTitle')}>
-      <p className="tnum text-caption text-muted">{t('gym.plateBar', { kg: num(plan.barKg) })}</p>
-      <div className="tnum mt-3 text-display">{num(result.achievableKg)}</div>
-      <div className="text-caption text-muted">{t('units.kg')}</div>
+      <p className="tnum text-caption text-muted">
+        {t('gym.plateBar', {
+          unit: t(`units.${unitKey('mass', settings.units)}`),
+          kg: num(toDisplay(plan.barKg, 'mass', settings.units), 1),
+        })}
+      </p>
+      <div className="tnum mt-3 text-display">
+        {num(toDisplay(result.achievableKg, 'mass', settings.units), 1)}
+      </div>
+      <div className="text-caption text-muted">{t(`units.${unitKey('mass', settings.units)}`)}</div>
 
       <div className="mt-4 text-label uppercase text-muted">{t('gym.platePerSide')}</div>
       <ul className="tnum mt-2 flex flex-wrap gap-2">
         {summary.map((s) => (
           <li key={s.plate} className="rounded-lg border border-hairline px-3 py-2 text-num">
-            {num(s.plate)} × {s.count}
+            {num(toDisplay(s.plate, 'mass', settings.units), 1)} × {s.count}
           </li>
         ))}
       </ul>
@@ -455,7 +551,10 @@ function PlateSheet({
       <p className="mt-4 text-caption text-muted">
         {result.exact
           ? t('gym.plateExact')
-          : t('gym.plateNearest', { kg: num(result.achievableKg) })}
+          : t('gym.plateNearest', {
+              unit: t(`units.${unitKey('mass', settings.units)}`),
+              kg: num(toDisplay(result.achievableKg, 'mass', settings.units), 1),
+            })}
       </p>
     </Sheet>
   );

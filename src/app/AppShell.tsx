@@ -42,8 +42,29 @@ export function AppShell({ seeded }: { seeded: boolean }) {
   const repos = useRepos();
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
-  const { activeProfileId } = useSession();
+  const { activeProfileId, leave } = useSession();
   const [updateReady, setUpdateReady] = useState(false);
+  const routeKey = `lenta.tabRoutes.${activeProfileId}`;
+  const [tabQueries, setTabQueries] = useState<Record<string, string>>(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(routeKey) ?? '{}');
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch {
+      return {};
+    }
+  });
+  useEffect(() => {
+    if (!TABS.some((tab) => tab.to === location.pathname)) return;
+    setTabQueries((previous) => {
+      const next = { ...previous, [location.pathname]: location.search };
+      try {
+        sessionStorage.setItem(routeKey, JSON.stringify(next));
+      } catch {
+        /* In-memory navigation still works. */
+      }
+      return next;
+    });
+  }, [location.pathname, location.search, routeKey]);
 
   useEffect(() => {
     registerServiceWorker(() => setUpdateReady(true));
@@ -64,21 +85,27 @@ export function AppShell({ seeded }: { seeded: boolean }) {
   }, [repos, seeded]);
 
   const profileName = activeProfileId ? (getProfileRef(activeProfileId)?.name ?? '') : '';
-  const isToday = location.pathname === '/';
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col">
+    <div className="app-shell mx-auto flex min-h-dvh flex-col">
       {!online ? (
         <div className="sticky top-0 z-30 bg-ink px-4 py-1 text-center text-caption text-paper">
           {t('common.offline')}
         </div>
       ) : null}
 
-      <header className="flex items-center gap-2 px-4 pb-1 pt-3">
+      <header className="app-header flex items-center gap-2 px-4 pb-3 pt-5">
         <SectionIcon name={HEADER_ICONS[location.pathname] ?? 'today'} active />
         {/* Имя профиля всегда видно — раздел 23 */}
-        <span className="flex-1 text-label uppercase text-muted">{profileName}</span>
-        {isToday ? (
+        <button
+          type="button"
+          className="tappable flex-1 gap-2 text-label text-muted"
+          onClick={leave}
+          aria-label={`${t('profiles.switch')}: ${profileName}`}
+        >
+          {profileName} <span aria-hidden="true">▾</span>
+        </button>
+        {
           <button
             type="button"
             aria-label={t('nav.settings')}
@@ -87,10 +114,10 @@ export function AppShell({ seeded }: { seeded: boolean }) {
           >
             <SectionIcon name="settings" />
           </button>
-        ) : null}
+        }
       </header>
 
-      <main className="flex-1 px-4 pb-28">
+      <main className="app-main flex-1 px-4 pb-28">
         <Outlet />
       </main>
 
@@ -113,12 +140,12 @@ export function AppShell({ seeded }: { seeded: boolean }) {
         onDone={(at) => void updateSettings({ sync: { ...settings.sync, lastBackupAt: at } })}
       />
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto max-w-lg border-t border-hairline bg-surface pb-[env(safe-area-inset-bottom)]">
+      <nav className="app-nav fixed inset-x-0 bottom-0 z-30 mx-auto border-t border-hairline bg-surface pb-[env(safe-area-inset-bottom)]">
         <ul className="flex">
           {TABS.map((tab) => (
             <li key={tab.to} className="flex-1">
               <NavLink
-                to={tab.to}
+                to={`${tab.to}${typeof tabQueries[tab.to] === 'string' && tabQueries[tab.to]?.startsWith('?') ? tabQueries[tab.to] : ''}`}
                 end={tab.to === '/'}
                 className={({ isActive }) =>
                   `flex min-h-[56px] flex-col items-center justify-center gap-0.5 text-[10px] font-semibold uppercase tracking-wider ${

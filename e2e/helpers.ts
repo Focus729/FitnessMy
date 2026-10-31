@@ -11,6 +11,11 @@ export async function bootstrap(page: Page, profileName = 'Тест'): Promise<v
   // 1 — язык
   await page.getByRole('button', { name: 'Далее' }).click();
   // 2 — профиль
+  await page
+    .getByRole('checkbox', {
+      name: 'Я проверил имя, пол, дату рождения и рост',
+    })
+    .check();
   await page.getByRole('button', { name: 'Далее' }).click();
   // 3 — цель
   await page.getByRole('button', { name: 'Далее' }).click();

@@ -99,3 +99,161 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Direction B: shared phone and desktop workspace. */
+.app-shell {
+  max-width: 740px;
+}
+.app-nav {
+  max-width: 740px;
+}
+.app-header {
+  margin-bottom: 12px;
+}
+.app-main > div {
+  min-width: 0;
+}
+.sheet-panel {
+  width: 100%;
+  margin-inline: auto;
+}
+input,
+select {
+  max-width: 100%;
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    max-width: 1400px;
+    padding-left: 216px;
+  }
+  .app-header {
+    padding: 28px 32px 12px;
+  }
+  .app-main {
+    padding: 12px 32px 48px;
+  }
+  .app-nav {
+    left: max(0px, calc((100vw - 1400px) / 2));
+    right: auto;
+    top: 0;
+    bottom: 0;
+    width: 216px;
+    padding-top: 100px;
+    border-top: 0;
+    border-right: 1px solid var(--hairline);
+  }
+  .app-nav ul {
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+  }
+  .app-nav a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 16px;
+    padding: 14px;
+    font-size: 13px;
+    border-radius: 12px;
+  }
+  .app-nav a[aria-current='page'] {
+    background: var(--surface-2);
+  }
+  .sheet-panel {
+    max-width: 680px;
+    max-height: 86dvh;
+    border-radius: 20px;
+    margin-bottom: 5dvh;
+  }
+  .today-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .today-grid > * {
+    margin-top: 0 !important;
+  }
+  .today-grid > .training-hero {
+    grid-column: 1 / -1;
+  }
+}
+.workout-progress {
+  appearance: none;
+  height: 6px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-2);
+  color: var(--accent);
+}
+input[aria-invalid='true'] {
+  outline: 2px solid var(--over);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.workout-progress::-webkit-progress-bar {
+  background: var(--surface-2);
+}
+.workout-progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 999px;
+}
+.workout-progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 999px;
+}
+.training-hero {
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 22px;
+}
+.training-hero h1 {
+  font-size: clamp(24px, 4vw, 36px);
+  line-height: 1.2;
+  font-weight: 650;
+  margin-block: 8px 16px;
+}
+@media (max-width: 420px) {
+  table {
+    font-size: 11px;
+  }
+}
+@media (min-width: 1024px) {
+  .today-grid > [aria-label] {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 639px) {
+  .sets-table thead {
+    display: none;
+  }
+  .sets-table tbody {
+    display: block;
+  }
+  .sets-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 12px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+  }
+  .sets-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+  }
+  .sets-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .sets-table input {
+    min-width: 0;
+    font-size: 24px;
+  }
+}

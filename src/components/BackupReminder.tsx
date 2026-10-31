@@ -9,9 +9,8 @@ import { useTranslation } from 'react-i18next';
 import { downloadBackup, exportBackup, needsBackupReminder } from '@/data/backup';
 import { getProfileRef } from '@/data/profiles';
 import { useSession } from '@/app/store';
+import { useSaveAction } from '@/app/useSaveAction';
 import { Button, Sheet } from '@/design-system/primitives';
-
-const SNOOZE_KEY = 'lenta.backupSnoozeUntil';
 
 export function BackupReminder({
   lastBackupAt,
@@ -22,9 +21,15 @@ export function BackupReminder({
 }) {
   const { t } = useTranslation();
   const { activeProfileId } = useSession();
+  const saving = useSaveAction();
+  const SNOOZE_KEY = `lenta.backupSnoozeUntil.${activeProfileId}`;
   const [snoozed, setSnoozed] = useState(() => {
-    const until = localStorage.getItem(SNOOZE_KEY);
-    return until != null && new Date(until).getTime() > Date.now();
+    try {
+      const until = localStorage.getItem(SNOOZE_KEY);
+      return until != null && new Date(until).getTime() > Date.now();
+    } catch {
+      return false;
+    }
   });
 
   const ref = activeProfileId ? getProfileRef(activeProfileId) : undefined;
@@ -38,14 +43,22 @@ export function BackupReminder({
 
   const snooze = () => {
     const until = new Date(Date.now() + 86_400_000).toISOString();
-    localStorage.setItem(SNOOZE_KEY, until);
+    try {
+      localStorage.setItem(SNOOZE_KEY, until);
+    } catch {
+      /* Keep the current session usable. */
+    }
     setSnoozed(true);
   };
 
   const save = async () => {
     const backup = await exportBackup(ref);
     downloadBackup(backup, ref.name);
-    localStorage.removeItem(SNOOZE_KEY);
+    try {
+      localStorage.removeItem(SNOOZE_KEY);
+    } catch {
+      /* The backup has already downloaded. */
+    }
     onDone(new Date().toISOString());
   };
 
@@ -55,7 +68,8 @@ export function BackupReminder({
         {lastBackupAt ? t('backup.reminderBody', { days }) : t('backup.reminderNever')}
       </p>
       <div className="mt-4 flex flex-col gap-2">
-        <Button variant="primary" full onClick={() => void save()}>
+        {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+        <Button variant="primary" full disabled={saving.busy} onClick={() => void saving.run(save)}>
           {t('backup.reminderAction')}
         </Button>
         <Button variant="ghost" full onClick={snooze}>

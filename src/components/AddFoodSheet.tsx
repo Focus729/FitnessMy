@@ -6,11 +6,12 @@
  *
  * AI-вкладки не показываются вообще, если AI выключен или нет ключа (15.1.7).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
 import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings } from '@/app/hooks';
+import { useSaveAction } from '@/app/useSaveAction';
 import { award } from '@/app/gamification';
 import type { AddFoodTab, Food, LocalDate, MealSlot, Nutrients } from '@/domain/model';
 import { scale } from '@/domain/nutrition/nutrients';
@@ -31,10 +32,31 @@ const EMPTY: never[] = [];
 
 type Pending =
   | { kind: 'food'; food: Food }
-  | { kind: 'dish'; id: string; name: string; per100: Nutrients; totalGrams: number }
-  | { kind: 'recipe'; id: string; name: string; per100: Nutrients; servingGrams: number };
+  | {
+      kind: 'dish';
+      id: string;
+      name: string;
+      per100: Nutrients;
+      totalGrams: number;
+    }
+  | {
+      kind: 'recipe';
+      id: string;
+      name: string;
+      per100: Nutrients;
+      servingGrams: number;
+    };
 
-export function AddFoodSheet({
+export function AddFoodSheet(props: {
+  open: boolean;
+  onClose: () => void;
+  date: LocalDate;
+  initialSlotId?: string;
+}) {
+  return props.open ? <AddFoodSession {...props} /> : null;
+}
+
+function AddFoodSession({
   open,
   onClose,
   date,
@@ -58,9 +80,18 @@ export function AddFoodSheet({
   const [pending, setPending] = useState<Pending | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPreset, setEditorPreset] = useState<Partial<Food> | undefined>();
+  const [repeatId, setRepeatId] = useState<string | null>(null);
+  const [quickDraft, setQuickDraft] = useState<{ name: string; kcal: number | '' }>({
+    name: '',
+    kcal: '',
+  });
+  const repeating = useSaveAction();
 
   const slotLabel = useCallback(
-    (slot: MealSlot) => (isDefaultSlot(slot.id) ? t(`slots.${slot.id}`, slot.name) : slot.name),
+    (slot: MealSlot) =>
+      isDefaultSlot(slot.id) && slot.name === slot.id
+        ? t(`slots.${slot.id}`, slot.name)
+        : slot.name,
     [t],
   );
 
@@ -85,19 +116,22 @@ export function AddFoodSheet({
     aiGenerated?: boolean;
     aiConfidence?: 'low' | 'medium' | 'high';
   }) => {
-    await repos.diary.create({
+    const entry = await repos.diary.create({
       date,
       time: toLocalTime(),
       mealSlotId: slotId,
       ...args,
     });
-    if (args.kind === 'food' && args.refId) await repos.foods.markUsed(args.refId, args.grams);
-    await award(repos, 'dayLogged', date);
+    if (args.kind === 'food' && args.refId)
+      await repos.foods.markUsed(args.refId, args.grams).catch(() => undefined);
+    await award(repos, 'dayLogged', date).catch(() => undefined);
+    return entry.id;
   };
 
   const gramsTarget: GramsTarget | null = pending
     ? pending.kind === 'food'
       ? {
+          id: pending.food.id,
           name: pending.food.name,
           per100: pending.food.per100,
           servings: pending.food.servings,
@@ -106,16 +140,30 @@ export function AddFoodSheet({
         }
       : pending.kind === 'dish'
         ? {
-            name: pending.name,
-            per100: pending.per100,
-            servings: [{ id: 'whole', name: t('food.dishTitle'), grams: pending.totalGrams, isDefault: true }],
-            basis: 'mass',
-          }
-        : {
+            id: pending.id,
             name: pending.name,
             per100: pending.per100,
             servings: [
-              { id: 'serving', name: t('food.recipeServings'), grams: pending.servingGrams, isDefault: true },
+              {
+                id: 'whole',
+                name: t('food.dishTitle'),
+                grams: pending.totalGrams,
+                isDefault: true,
+              },
+            ],
+            basis: 'mass',
+          }
+        : {
+            id: pending.id,
+            name: pending.name,
+            per100: pending.per100,
+            servings: [
+              {
+                id: 'serving',
+                name: t('food.recipeServings'),
+                grams: pending.servingGrams,
+                isDefault: true,
+              },
             ],
             basis: 'mass',
           }
@@ -123,7 +171,12 @@ export function AddFoodSheet({
 
   return (
     <>
-      <Sheet open={open && !pending} onClose={onClose} title={t('food.addTitle')}>
+      <Sheet
+        open={open && !pending}
+        onClose={onClose}
+        title={t('food.addTitle')}
+        dirty={quickDraft.name !== '' || quickDraft.kcal !== ''}
+      >
         <div className="no-scrollbar -mx-4 mb-3 flex gap-1 overflow-x-auto px-4">
           {visibleTabs.map((key) => (
             <button
@@ -140,7 +193,24 @@ export function AddFoodSheet({
         </div>
 
         {tab === 'frequent' ? (
-          <FrequentTab onPick={(food) => setPending({ kind: 'food', food })} />
+          <FrequentTab
+            onPick={(food) => setPending({ kind: 'food', food })}
+            onRepeat={(food) =>
+              void repeating.run(async () => {
+                const grams = food.lastGrams ?? 100;
+                setRepeatId(
+                  await addEntry({
+                    kind: 'food',
+                    refId: food.id,
+                    grams,
+                    nutrients: scale(food.per100, grams),
+                    inputMethod: 'repeat',
+                    novaGroup: food.novaGroup,
+                  }),
+                );
+              })
+            }
+          />
         ) : null}
 
         {tab === 'search' ? (
@@ -165,6 +235,8 @@ export function AddFoodSheet({
 
         {tab === 'quick' ? (
           <QuickTab
+            draft={quickDraft}
+            onDraftChange={setQuickDraft}
             onSubmit={async (name, kcal) => {
               await addEntry({
                 kind: 'quick',
@@ -177,33 +249,27 @@ export function AddFoodSheet({
           />
         ) : null}
 
-        {tab === 'dishes' ? (
-          <DishesTab
-            onPick={(dish) => setPending(dish)}
-          />
-        ) : null}
+        {tab === 'dishes' ? <DishesTab onPick={(dish) => setPending(dish)} /> : null}
 
         {tab === 'recipes' ? <RecipesTab onPick={(recipe) => setPending(recipe)} /> : null}
 
-        {tab === 'copyDay' ? (
-          <CopyDayTab
-            date={date}
-            onDone={onClose}
-          />
-        ) : null}
+        {tab === 'copyDay' ? <CopyDayTab date={date} onDone={onClose} /> : null}
 
         {tab === 'textAi' ? (
           <TextTab
             onAdd={async (items) => {
-              for (const item of items) {
-                await addEntry({
+              await repos.diary.addBatch(
+                items.map((item) => ({
+                  date,
+                  time: toLocalTime(),
+                  mealSlotId: slotId,
                   kind: 'food',
                   refId: item.foodId,
                   grams: item.grams,
                   nutrients: item.nutrients,
                   inputMethod: 'text',
-                });
-              }
+                })),
+              );
               onClose();
             }}
           />
@@ -212,8 +278,11 @@ export function AddFoodSheet({
         {tab === 'photoAi' ? (
           <PhotoTab
             onAdd={async (drafts) => {
-              for (const d of drafts) {
-                await addEntry({
+              await repos.diary.addBatch(
+                drafts.map((d) => ({
+                  date,
+                  time: toLocalTime(),
+                  mealSlotId: slotId,
                   kind: 'quick',
                   quickName: d.name,
                   grams: d.grams,
@@ -226,46 +295,67 @@ export function AddFoodSheet({
                   inputMethod: 'photo',
                   aiGenerated: true,
                   aiConfidence: d.confidence,
-                });
-              }
+                })),
+              );
               onClose();
             }}
           />
         ) : null}
+        {repeating.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+        {repeatId ? (
+          <div
+            role="status"
+            className="sticky bottom-0 mt-3 flex items-center justify-between rounded-xl border border-accent bg-surface p-3"
+          >
+            <span>{t('common.done')}</span>
+            <Button
+              onClick={() =>
+                void repeating.run(async () => {
+                  await repos.diary.remove(repeatId);
+                  setRepeatId(null);
+                })
+              }
+            >
+              {t('common.undo')}
+            </Button>
+          </div>
+        ) : null}
       </Sheet>
 
-      <GramsSheet
-        open={pending != null}
-        onClose={() => setPending(null)}
-        target={gramsTarget}
-        slots={slots}
-        slotId={slotId}
-        onSlotChange={setSlotId}
-        slotLabel={slotLabel}
-        onSubmit={async (grams) => {
-          if (!pending) return;
-          if (pending.kind === 'food') {
-            await addEntry({
-              kind: 'food',
-              refId: pending.food.id,
-              grams,
-              nutrients: scale(pending.food.per100, grams),
-              inputMethod: 'search',
-              novaGroup: pending.food.novaGroup,
-            });
-          } else {
-            await addEntry({
-              kind: pending.kind,
-              refId: pending.id,
-              grams,
-              nutrients: scale(pending.per100, grams),
-              inputMethod: 'search',
-            });
-          }
-          setPending(null);
-          onClose();
-        }}
-      />
+      {pending ? (
+        <GramsSheet
+          open={pending != null}
+          onClose={() => setPending(null)}
+          target={gramsTarget}
+          slots={slots}
+          slotId={slotId}
+          onSlotChange={setSlotId}
+          slotLabel={slotLabel}
+          onSubmit={async (grams) => {
+            if (!pending) return;
+            if (pending.kind === 'food') {
+              await addEntry({
+                kind: 'food',
+                refId: pending.food.id,
+                grams,
+                nutrients: scale(pending.food.per100, grams),
+                inputMethod: 'search',
+                novaGroup: pending.food.novaGroup,
+              });
+            } else {
+              await addEntry({
+                kind: pending.kind,
+                refId: pending.id,
+                grams,
+                nutrients: scale(pending.per100, grams),
+                inputMethod: 'search',
+              });
+            }
+            setPending(null);
+            onClose();
+          }}
+        />
+      ) : null}
 
       <FoodEditorSheet
         open={editorOpen}
@@ -286,7 +376,13 @@ function isDefaultSlot(id: string): boolean {
 
 /* ─────────────────────────────── Вкладки ───────────────────────────────────── */
 
-function FrequentTab({ onPick }: { onPick: (food: Food) => void }) {
+function FrequentTab({
+  onPick,
+  onRepeat,
+}: {
+  onPick: (food: Food) => void;
+  onRepeat: (food: Food) => void;
+}) {
   const { t } = useTranslation();
   const foods = useQuery((r) => r.foods.frequent(12));
 
@@ -298,17 +394,23 @@ function FrequentTab({ onPick }: { onPick: (food: Food) => void }) {
   return (
     <div className="grid grid-cols-3 gap-2">
       {foods.map((food) => (
-        <Tile
-          key={food.id}
-          title={food.name}
-          subtitle={
-            food.lastGrams != null
-              ? `${num(food.lastGrams)} · ${num(Math.round((food.per100.kcal * food.lastGrams) / 100))}`
-              : `${num(food.per100.kcal)} / 100`
-          }
-          accent={food.isFavorite}
-          onClick={() => onPick(food)}
-        />
+        <div key={food.id}>
+          <Tile
+            title={food.name}
+            subtitle={
+              food.lastGrams != null
+                ? `${num(food.lastGrams)} · ${num(Math.round((food.per100.kcal * food.lastGrams) / 100))}`
+                : `${num(food.per100.kcal)} / 100`
+            }
+            accent={food.isFavorite}
+            onClick={() => onPick(food)}
+          />
+          {food.lastGrams != null ? (
+            <Button variant="ghost" full onClick={() => onRepeat(food)}>
+              {t('food.repeatPortion')}
+            </Button>
+          ) : null}
+        </div>
       ))}
     </div>
   );
@@ -325,20 +427,44 @@ function SearchTab({
   const repos = useRepos();
   const [query, setQuery] = useState('');
   const [onlineResults, setOnlineResults] = useState<Food[] | null>(null);
+  const requestVersion = useRef(0);
+  const request = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      ++requestVersion.current;
+      request.current?.abort();
+    },
+    [],
+  );
   const [status, setStatus] = useState<'idle' | 'loading' | 'offline' | 'failed'>('idle');
 
   const local = useQuery((r) => r.foods.search(query, 40), [query]) ?? [];
 
   const runOnline = async () => {
+    const version = ++requestVersion.current;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setStatus('loading');
     setOnlineResults(null);
     try {
-      const external = await searchOnline(query);
+      const external = await searchOnline(query, controller.signal);
+      if (version !== requestVersion.current) return;
       const saved: Food[] = [];
       for (const item of external) saved.push(await cacheExternalFood(repos, item));
-      setOnlineResults(saved);
+      if (version !== requestVersion.current) return;
+      setOnlineResults(
+        saved.filter(
+          (food, index) =>
+            saved.findIndex(
+              (item) =>
+                item.id === food.id || Boolean(item.barcode && item.barcode === food.barcode),
+            ) === index,
+        ),
+      );
       setStatus('idle');
     } catch (e) {
+      if (version !== requestVersion.current) return;
       setStatus(e instanceof FoodSourceError && e.kind === 'offline' ? 'offline' : 'failed');
     }
   };
@@ -347,7 +473,13 @@ function SearchTab({
     <div>
       <TextField
         value={query}
-        onChange={setQuery}
+        onChange={(value) => {
+          ++requestVersion.current;
+          request.current?.abort();
+          setQuery(value);
+          setOnlineResults(null);
+          setStatus('idle');
+        }}
         placeholder={t('food.searchPlaceholder')}
         aria-label={t('food.searchPlaceholder')}
         autoFocus
@@ -357,9 +489,16 @@ function SearchTab({
         {local.map((food) => (
           <FoodRow key={food.id} food={food} onPick={onPick} />
         ))}
-        {onlineResults?.map((food) => (
-          <FoodRow key={food.id} food={food} onPick={onPick} />
-        ))}
+        {onlineResults
+          ?.filter(
+            (food) =>
+              !local.some(
+                (item) => item.id === food.id || (item.barcode && item.barcode === food.barcode),
+              ),
+          )
+          .map((food) => (
+            <FoodRow key={food.id} food={food} onPick={onPick} />
+          ))}
       </ul>
 
       {query.trim() ? (
@@ -369,6 +508,12 @@ function SearchTab({
             {t('food.searchOnline')}
           </Button>
           <p className="text-caption text-muted">{t('food.searchOnlineHint')}</p>
+          {status === 'loading' ? <p role="status">{t('common.loading')}</p> : null}
+          {status === 'idle' && onlineResults?.length === 0 && local.length === 0 ? (
+            <p role="status" className="text-caption text-muted">
+              {t('food.searchNoMatch')}
+            </p>
+          ) : null}
           {status === 'offline' ? (
             <p className="text-caption text-muted">{t('errors.networkOffline')}</p>
           ) : null}
@@ -425,19 +570,36 @@ function BarcodeTab({
   const { t } = useTranslation();
   const repos = useRepos();
   const [notFound, setNotFound] = useState<string | null>(null);
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'offline' | 'failed'>(
+    'idle',
+  );
+  const lookupBusy = useRef(false);
 
   const handle = useCallback(
     async (code: string) => {
-      const local = await repos.foods.byBarcode(code);
-      if (local) return onPick(local);
+      if (lookupBusy.current) return;
+      lookupBusy.current = true;
+      setLookupStatus('loading');
+      setNotFound(null);
       try {
+        const local = await repos.foods.byBarcode(code);
+        if (local) return onPick(local);
         const external = await findByBarcode(code);
         if (external) {
           const saved = await cacheExternalFood(repos, external);
           return onPick(saved);
         }
-      } catch {
-        /* сеть недоступна — предложим создать вручную */
+        setLookupStatus('idle');
+      } catch (error) {
+        setLookupStatus(
+          error instanceof FoodSourceError && error.kind === 'notFound'
+            ? 'idle'
+            : error instanceof FoodSourceError && error.kind === 'offline'
+              ? 'offline'
+              : 'failed',
+        );
+      } finally {
+        lookupBusy.current = false;
       }
       setNotFound(code);
     },
@@ -447,7 +609,28 @@ function BarcodeTab({
   if (notFound) {
     return (
       <div>
-        <p className="text-body text-muted">{t('food.barcodeNotFound')}</p>
+        <p role="status" className="text-body text-muted">
+          {t(
+            lookupStatus === 'offline'
+              ? 'errors.networkOffline'
+              : lookupStatus === 'failed'
+                ? 'errors.networkFailed'
+                : 'food.barcodeNotFound',
+          )}
+        </p>
+        <Button full onClick={() => void handle(notFound)}>
+          {t('common.retry')}
+        </Button>
+        <Button
+          full
+          variant="ghost"
+          onClick={() => {
+            setNotFound(null);
+            setLookupStatus('idle');
+          }}
+        >
+          {t('food.barcodeManual')}
+        </Button>
         <Button
           variant="primary"
           full
@@ -460,13 +643,27 @@ function BarcodeTab({
     );
   }
 
-  return <BarcodeScanner onDetected={(code) => void handle(code)} />;
+  return lookupStatus === 'loading' ? (
+    <p role="status">{t('common.loading')}</p>
+  ) : (
+    <BarcodeScanner onDetected={(code) => void handle(code)} />
+  );
 }
 
-function QuickTab({ onSubmit }: { onSubmit: (name: string, kcal: number) => void }) {
+function QuickTab({
+  onSubmit,
+  draft,
+  onDraftChange,
+}: {
+  onSubmit: (name: string, kcal: number) => void | Promise<void>;
+  draft: { name: string; kcal: number | '' };
+  onDraftChange: (draft: { name: string; kcal: number | '' }) => void;
+}) {
   const { t } = useTranslation();
-  const [name, setName] = useState('');
-  const [kcal, setKcal] = useState<number | ''>('');
+  const { name, kcal } = draft;
+  const setName = (name: string) => onDraftChange({ ...draft, name });
+  const setKcal = (kcal: number | '') => onDraftChange({ ...draft, kcal });
+  const saving = useSaveAction();
 
   return (
     <div className="space-y-3">
@@ -490,11 +687,16 @@ function QuickTab({ onSubmit }: { onSubmit: (name: string, kcal: number) => void
       <Button
         variant="primary"
         full
-        disabled={kcal === '' || kcal <= 0}
-        onClick={() => onSubmit(name, kcal === '' ? 0 : kcal)}
+        disabled={kcal === '' || kcal <= 0 || saving.busy}
+        onClick={() =>
+          void saving.run(async () => {
+            await onSubmit(name, kcal === '' ? 0 : kcal);
+          })
+        }
       >
         {t('common.save')}
       </Button>
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
     </div>
   );
 }
@@ -635,16 +837,14 @@ function CopyDayTab({ date, onDone }: { date: LocalDate; onDone: () => void }) {
 function TextTab({
   onAdd,
 }: {
-  onAdd: (items: { foodId: string; grams: number; nutrients: Nutrients }[]) => void;
+  onAdd: (items: { foodId: string; grams: number; nutrients: Nutrients }[]) => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
+  const saving = useSaveAction();
   const foods = useQueryWithDefault((r) => r.foods.all(), EMPTY);
 
-  const parsed = useMemo(
-    () => (text.trim() ? parseFoodText(text, foods) : []),
-    [text, foods],
-  );
+  const parsed = useMemo(() => (text.trim() ? parseFoodText(text, foods) : []), [text, foods]);
   const resolved = parsed.filter((p) => p.food && p.grams != null);
 
   return (
@@ -679,19 +879,22 @@ function TextTab({
       <Button
         variant="primary"
         full
-        disabled={resolved.length === 0}
+        disabled={resolved.length === 0 || saving.busy}
         onClick={() =>
-          onAdd(
-            resolved.map((item) => ({
-              foodId: (item.food as Food).id,
-              grams: item.grams as number,
-              nutrients: scale((item.food as Food).per100, item.grams as number),
-            })),
-          )
+          void saving.run(async () => {
+            await onAdd(
+              resolved.map((item) => ({
+                foodId: (item.food as Food).id,
+                grams: item.grams as number,
+                nutrients: scale((item.food as Food).per100, item.grams as number),
+              })),
+            );
+          })
         }
       >
         {t('common.add')}
       </Button>
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
     </div>
   );
 }
@@ -703,12 +906,37 @@ function TextTab({
  * Ответ AI — всегда черновик: он попадает в форму редактирования,
  * а не сразу в дневник (15.1.6).
  */
-function PhotoTab({ onAdd }: { onAdd: (drafts: AIFoodDraft[]) => void }) {
+function PhotoTab({ onAdd }: { onAdd: (drafts: AIFoodDraft[]) => void | Promise<void> }) {
   const { t, i18n } = useTranslation();
   const repos = useRepos();
   const [drafts, setDrafts] = useState<AIFoodDraft[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const saving = useRef(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const valid =
+    drafts != null &&
+    drafts.length > 0 &&
+    drafts.every(
+      (d) =>
+        d.name.trim() &&
+        d.grams > 0 &&
+        [d.grams, d.kcal, d.proteinG, d.fatG, d.carbG].every((v) => Number.isFinite(v) && v >= 0),
+    );
+  const save = async () => {
+    if (!valid || !drafts || saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setSaveFailed(false);
+    try {
+      await onAdd(drafts);
+    } catch {
+      setSaveFailed(true);
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
 
   const pick = async (file: File) => {
     setBusy(true);
@@ -747,16 +975,59 @@ function PhotoTab({ onAdd }: { onAdd: (drafts: AIFoodDraft[]) => void }) {
           <p className="text-caption text-muted">{t('ai.draftNotice')}</p>
           <ul className="divide-y divide-hairline">
             {drafts.map((d, i) => (
-              <li key={`${d.name}-${i}`} className="flex items-center gap-3 py-2">
-                <span className="flex-1 truncate text-body">{d.name}</span>
-                <span className="tnum text-caption text-muted">
-                  {num(d.grams)} {t('units.g')}
-                </span>
-                <span className="tnum text-num">{num(Math.round(d.kcal))}</span>
+              <li key={i} className="space-y-2 py-3">
+                <TextField
+                  value={d.name}
+                  aria-label={t('food.quickName')}
+                  onChange={(name) =>
+                    setDrafts(
+                      (rows) =>
+                        rows?.map((row, index) => (index === i ? { ...row, name } : row)) ?? null,
+                    )
+                  }
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  {(['grams', 'kcal', 'proteinG', 'fatG', 'carbG'] as const).map((field) => (
+                    <label key={field} className="text-caption">
+                      {t(
+                        field === 'grams'
+                          ? 'units.g'
+                          : field === 'kcal'
+                            ? 'units.kcal'
+                            : `today.${field === 'proteinG' ? 'protein' : field === 'fatG' ? 'fat' : 'carb'}`,
+                      )}
+                      <NumberField
+                        value={d[field]}
+                        onChange={(value) =>
+                          setDrafts(
+                            (rows) =>
+                              rows?.map((row, index) =>
+                                index === i
+                                  ? {
+                                      ...row,
+                                      [field]: value === '' ? 0 : value,
+                                    }
+                                  : row,
+                              ) ?? null,
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    setDrafts((rows) => rows?.filter((_, index) => index !== i) ?? null)
+                  }
+                >
+                  {t('common.delete')}
+                </Button>
               </li>
             ))}
           </ul>
-          <Button variant="primary" full disabled={drafts.length === 0} onClick={() => onAdd(drafts)}>
+          {saveFailed ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+          <Button variant="primary" full disabled={!valid || busy} onClick={() => void save()}>
             {t('common.add')}
           </Button>
         </>

@@ -1,8 +1,14 @@
+import { useSaveAction } from '@/app/useSaveAction';
+import { useSessionDraft, clearSessionDraft } from '@/app/useSessionDraft';
+import { toDisplay, unitKey } from '@/lib/units';
+import { MeasureField } from '@/components/MeasureField';
 /**
  * Вкладка «Тело» — вес и замеры (11.1), сон (11.2), чек-ин (11.3),
  * привычки (12.1) с сериями и заморозками (12.2).
  */
 import { useMemo, useState } from 'react';
+import { useRouteState } from '@/app/navigation';
+import type { SleepLog, DailyCheckin } from '@/domain/model';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
 import { useQuery, useQueryWithDefault } from '@/data/repositories/hooks';
@@ -33,15 +39,38 @@ const EMPTY: never[] = [];
 type Section = 'weight' | 'sleep' | 'checkin' | 'habits';
 
 const MEASURES: MeasurementKey[] = [
-  'neck', 'chest', 'waist', 'hips', 'thighL', 'thighR', 'armL', 'armR', 'calfL', 'calfR',
+  'neck',
+  'chest',
+  'waist',
+  'hips',
+  'thighL',
+  'thighR',
+  'armL',
+  'armR',
+  'calfL',
+  'calfR',
 ];
 
 export function BodyScreen() {
   const { t } = useTranslation();
-  const [section, setSection] = useState<Section>('weight');
+  const [section, setSection] = useRouteState<Section>('section', 'weight', [
+    'weight',
+    'sleep',
+    'checkin',
+    'habits',
+  ]);
+  const [date, setDate] = useRouteState('date', todayFn());
 
   return (
     <div className="space-y-4">
+      <input
+        type="date"
+        value={date}
+        max={todayFn()}
+        onChange={(e) => e.target.value && setDate(e.target.value)}
+        aria-label={t('common.date')}
+        className="min-h-touch rounded-xl border border-hairline bg-surface px-3"
+      />
       <Segmented
         ariaLabel={t('body.title')}
         value={section}
@@ -53,9 +82,9 @@ export function BodyScreen() {
         ]}
         onChange={setSection}
       />
-      {section === 'weight' ? <WeightSection /> : null}
-      {section === 'sleep' ? <SleepSection /> : null}
-      {section === 'checkin' ? <CheckinSection /> : null}
+      {section === 'weight' ? <WeightSection key={date} date={date} /> : null}
+      {section === 'sleep' ? <SleepSection key={date} date={date} /> : null}
+      {section === 'checkin' ? <CheckinSection key={date} date={date} /> : null}
       {section === 'habits' ? <HabitsSection /> : null}
     </div>
   );
@@ -63,18 +92,17 @@ export function BodyScreen() {
 
 /* ─────────────────────── Вес и замеры (11.1) ───────────────────────────────── */
 
-function WeightSection() {
+function WeightSection({ date }: { date: string }) {
   const { t } = useTranslation();
   const repos = useRepos();
-  const date = todayFn();
+  const saving = useSaveAction();
+  const { units } = useSettings();
   const [weight, setWeight] = useState<number | ''>('');
   const [measuresOpen, setMeasuresOpen] = useState(false);
 
-  const history = useQueryWithDefault(
-    (r) => r.body.byDateRange(addDays(date, -180), date),
-    EMPTY,
-    [date],
-  );
+  const history = useQueryWithDefault((r) => r.body.byDateRange(addDays(date, -180), date), EMPTY, [
+    date,
+  ]);
   const lastMeasureDate = useQuery((r) => r.body.lastMeasurementDate());
 
   const series = useMemo(
@@ -89,7 +117,7 @@ function WeightSection() {
   );
 
   const save = async () => {
-    if (weight === '') return;
+    if (weight === '' || weight <= 0) return;
     const existing = await repos.body.byDate(date);
     if (existing) await repos.body.update(existing.id, { weightKg: weight });
     else await repos.body.create({ date, weightKg: weight });
@@ -103,8 +131,13 @@ function WeightSection() {
 
   return (
     <div className="space-y-4">
+      {saving.state === 'error' ? (
+        <p role="alert">{t('errors.saveFailed')}</p>
+      ) : saving.state === 'saved' ? (
+        <p role="status">{t('common.done')}</p>
+      ) : null}
       <div className="flex gap-2">
-        <NumberField
+        <MeasureField
           value={weight}
           onChange={setWeight}
           suffix={t('units.kg')}
@@ -112,18 +145,22 @@ function WeightSection() {
           className="flex-1"
           aria-label={t('body.weightAdd')}
         />
-        <Button variant="primary" disabled={weight === ''} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          disabled={weight === '' || weight <= 0 || saving.busy}
+          onClick={() => void saving.run(save)}
+        >
           {t('common.save')}
         </Button>
       </div>
 
       <Panel title={t('body.trend')}>
         <MetricValue
-          value={latestTrend != null ? num(latestTrend, 1) : '—'}
-          unit={t('units.kg')}
+          value={latestTrend != null ? num(toDisplay(latestTrend, 'mass', units), 1) : '—'}
+          unit={t(`units.${unitKey('mass', units)}`)}
           size="display"
-          delta={trendDelta ?? undefined}
-          deltaGood="down"
+          delta={trendDelta == null ? undefined : toDisplay(trendDelta, 'mass', units)}
+          deltaGood="neutral"
         />
         <WeightChart series={series} />
         <p className="text-caption text-muted">{t('body.weightNoise')}</p>
@@ -135,23 +172,43 @@ function WeightSection() {
         {t('body.measurements')}
       </Button>
 
-      <MeasurementsSheet open={measuresOpen} onClose={() => setMeasuresOpen(false)} />
+      <MeasurementsSheet
+        key={String(measuresOpen)}
+        date={date}
+        open={measuresOpen}
+        onClose={() => setMeasuresOpen(false)}
+      />
     </div>
   );
 }
 
-function MeasurementsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MeasurementsSheet({
+  open,
+  onClose,
+  date,
+}: {
+  open: boolean;
+  onClose: () => void;
+  date: string;
+}) {
   const { t } = useTranslation();
   const repos = useRepos();
-  const date = todayFn();
-  const record = useQuery((r) => r.body.byDate(date), [date]);
+  const loaded = useQuery(async (r) => ({ record: await r.body.byDate(date) }), [date]);
+  const record = loaded?.record;
+  const saving = useSaveAction();
   const [values, setValues] = useState<Partial<Record<MeasurementKey, number | ''>>>({});
 
   const save = async () => {
-    const measurements: Partial<Record<MeasurementKey, number>> = { ...record?.measurements };
+    if (!loaded) return;
+    const measurements: Partial<Record<MeasurementKey, number>> = {
+      ...record?.measurements,
+    };
     for (const key of MEASURES) {
       const v = values[key];
-      if (v !== '' && v != null) measurements[key] = v;
+      if (v !== '' && v != null) {
+        if (v <= 0 || v > 300) throw new Error('Invalid measurement');
+        measurements[key] = v;
+      }
     }
     if (record) await repos.body.update(record.id, { measurements });
     else await repos.body.create({ date, measurements });
@@ -161,20 +218,31 @@ function MeasurementsSheet({ open, onClose }: { open: boolean; onClose: () => vo
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!saving.busy) onClose();
+      }}
+      dirty={Object.keys(values).length > 0}
+      onSave={() => void saving.run(save)}
       title={t('body.measurements')}
       footer={
-        <Button variant="primary" full onClick={() => void save()}>
+        <Button
+          variant="primary"
+          full
+          disabled={!loaded || saving.busy}
+          onClick={() => void saving.run(save)}
+        >
           {t('common.save')}
         </Button>
       }
     >
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       <div className="grid grid-cols-2 gap-2">
         {MEASURES.map((key) => (
           <div key={key}>
             <SectionHeader title={t(`body.measure.${key}`)} />
             <div className="mt-1">
-              <NumberField
+              <MeasureField
+                measure="length"
                 value={values[key] ?? record?.measurements?.[key] ?? ''}
                 onChange={(v) => setValues((s) => ({ ...s, [key]: v }))}
                 suffix={t('units.cm')}
@@ -190,27 +258,48 @@ function MeasurementsSheet({ open, onClose }: { open: boolean; onClose: () => vo
 
 /* ──────────────────────────── Сон (11.2) ───────────────────────────────────── */
 
-function SleepSection() {
+function SleepSection({ date }: { date: string }) {
+  const { t } = useTranslation();
+  const loaded = useQuery(async (r) => ({ record: await r.sleep.byDate(date) }), [date]);
+  return loaded ? <SleepForm date={date} existing={loaded.record} /> : <p>{t('common.loading')}</p>;
+}
+
+function SleepForm({ date, existing }: { date: string; existing?: SleepLog }) {
   const { t } = useTranslation();
   const repos = useRepos();
-  const date = todayFn();
-  const existing = useQuery((r) => r.sleep.byDate(date), [date]);
+  const saving = useSaveAction();
   const recent = useQuery((r) => r.sleep.byDateRange(addDays(date, -30), date), [date]) ?? [];
 
-  const [bedAt, setBedAt] = useState('23:00');
-  const [wakeAt, setWakeAt] = useState('07:00');
-  const [quality, setQuality] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [bedAt, setBedAt] = useSessionDraft(`sleep.${date}`, 'bedAt', existing?.bedAt ?? '23:00');
+  const [wakeAt, setWakeAt] = useSessionDraft(
+    `sleep.${date}`,
+    'wakeAt',
+    existing?.wakeAt ?? '07:00',
+  );
+  const [quality, setQuality] = useSessionDraft<1 | 2 | 3 | 4 | 5>(
+    `sleep.${date}`,
+    'quality',
+    existing?.quality ?? 3,
+  );
 
   const durationMin = sleepDurationMin(bedAt, wakeAt);
 
   const save = async () => {
+    if (!bedAt || !wakeAt || durationMin <= 0) throw new Error('Invalid duration');
+    const existing = await repos.sleep.byDate(date);
     const payload = { date, bedAt, wakeAt, durationMin, quality };
     if (existing) await repos.sleep.update(existing.id, payload);
     else await repos.sleep.create(payload);
+    clearSessionDraft(repos.profileId, `sleep.${date}`);
   };
 
   return (
     <div className="space-y-4">
+      {saving.state === 'error' ? (
+        <p role="alert">{t('errors.saveFailed')}</p>
+      ) : saving.state === 'saved' ? (
+        <p role="status">{t('common.done')}</p>
+      ) : null}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <SectionHeader title={t('body.bedAt')} />
@@ -247,13 +336,16 @@ function SleepSection() {
           <Segmented
             ariaLabel={t('body.sleepQuality')}
             value={quality}
-            options={[1, 2, 3, 4, 5].map((v) => ({ value: v as 1 | 2 | 3 | 4 | 5, label: String(v) }))}
+            options={[1, 2, 3, 4, 5].map((v) => ({
+              value: v as 1 | 2 | 3 | 4 | 5,
+              label: String(v),
+            }))}
             onChange={setQuality}
           />
         </div>
       </div>
 
-      <Button variant="primary" full onClick={() => void save()}>
+      <Button variant="primary" full disabled={saving.busy} onClick={() => void saving.run(save)}>
         {t('common.save')}
       </Button>
 
@@ -280,21 +372,53 @@ function SleepSection() {
 
 /* ───────────────────────── Чек-ин (11.3) ──────────────────────────────────── */
 
-function CheckinSection() {
+function CheckinSection({ date }: { date: string }) {
+  const { t } = useTranslation();
+  const loaded = useQuery(async (r) => ({ record: await r.checkins.byDate(date) }), [date]);
+  return loaded ? (
+    <CheckinForm date={date} existing={loaded.record} />
+  ) : (
+    <p>{t('common.loading')}</p>
+  );
+}
+
+function CheckinForm({ date, existing }: { date: string; existing?: DailyCheckin }) {
   const { t } = useTranslation();
   const repos = useRepos();
+  const saving = useSaveAction();
   const settings = useSettings();
-  const date = todayFn();
-  const existing = useQuery((r) => r.checkins.byDate(date), [date]);
 
-  const [mood, setMood] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const [energy, setEnergy] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const [stress, setStress] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const [soreness, setSoreness] = useState<1 | 2 | 3 | 4 | 5>(3);
-  const [steps, setSteps] = useState<number | ''>('');
-  const [note, setNote] = useState('');
+  const [mood, setMood] = useSessionDraft<1 | 2 | 3 | 4 | 5>(
+    `checkin.${date}`,
+    'mood',
+    existing?.mood ?? 3,
+  );
+  const [energy, setEnergy] = useSessionDraft<1 | 2 | 3 | 4 | 5>(
+    `checkin.${date}`,
+    'energy',
+    existing?.energy ?? 3,
+  );
+  const [stress, setStress] = useSessionDraft<1 | 2 | 3 | 4 | 5>(
+    `checkin.${date}`,
+    'stress',
+    existing?.stress ?? 3,
+  );
+  const [soreness, setSoreness] = useSessionDraft<1 | 2 | 3 | 4 | 5>(
+    `checkin.${date}`,
+    'soreness',
+    existing?.soreness ?? 3,
+  );
+  const [steps, setSteps] = useSessionDraft<number | ''>(
+    `checkin.${date}`,
+    'steps',
+    existing?.steps ?? '',
+  );
+  const [note, setNote] = useSessionDraft(`checkin.${date}`, 'note', existing?.note ?? '');
+  const validSteps = steps === '' || (Number.isInteger(steps) && steps >= 0 && steps <= 200000);
 
   const save = async () => {
+    if (!validSteps) return;
+    const existing = await repos.checkins.byDate(date);
     const payload = {
       date,
       mood,
@@ -306,11 +430,17 @@ function CheckinSection() {
     };
     if (existing) await repos.checkins.update(existing.id, payload);
     else await repos.checkins.create(payload);
+    clearSessionDraft(repos.profileId, `checkin.${date}`);
     await award(repos, 'checkinDone', date);
   };
 
   return (
     <div className="space-y-4">
+      {saving.state === 'error' ? (
+        <p role="alert">{t('errors.saveFailed')}</p>
+      ) : saving.state === 'saved' ? (
+        <p role="status">{t('common.done')}</p>
+      ) : null}
       <Scale label={t('body.mood')} value={mood} onChange={setMood} />
       <Scale label={t('body.energy')} value={energy} onChange={setEnergy} />
       <Scale label={t('body.stress')} value={stress} onChange={setStress} />
@@ -320,15 +450,35 @@ function CheckinSection() {
         <div>
           <SectionHeader title={t('body.steps')} />
           <div className="mt-1">
-            <NumberField value={steps} onChange={setSteps} aria-label={t('body.steps')} />
+            <NumberField
+              value={steps}
+              onChange={setSteps}
+              aria-label={t('body.steps')}
+              aria-invalid={!validSteps}
+            />
           </div>
           <p className="mt-1 text-caption text-muted">{t('body.stepsManual')}</p>
+          {!validSteps ? (
+            <p role="alert" className="text-caption text-over">
+              {t('body.stepsInvalid')}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      <TextField value={note} onChange={setNote} aria-label={t('common.note')} placeholder={t('common.note')} />
+      <TextField
+        value={note}
+        onChange={setNote}
+        aria-label={t('common.note')}
+        placeholder={t('common.note')}
+      />
 
-      <Button variant="primary" full onClick={() => void save()}>
+      <Button
+        variant="primary"
+        full
+        disabled={saving.busy || !validSteps}
+        onClick={() => void saving.run(save)}
+      >
         {t('common.save')}
       </Button>
     </div>
@@ -351,7 +501,10 @@ function Scale({
         <Segmented
           ariaLabel={label}
           value={value}
-          options={[1, 2, 3, 4, 5].map((v) => ({ value: v as 1 | 2 | 3 | 4 | 5, label: String(v) }))}
+          options={[1, 2, 3, 4, 5].map((v) => ({
+            value: v as 1 | 2 | 3 | 4 | 5,
+            label: String(v),
+          }))}
           onChange={onChange}
         />
       </div>
@@ -473,7 +626,13 @@ function HabitsSection() {
         {t('habits.new')}
       </Button>
 
-      <HabitEditorSheet open={editorOpen} onClose={() => setEditorOpen(false)} order={active.length} />
+      {editorOpen ? (
+        <HabitEditorSheet
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+          order={active.length}
+        />
+      ) : null}
     </div>
   );
 }
@@ -504,6 +663,25 @@ function HabitEditorSheet({
   const [everyN, setEveryN] = useState<number | ''>(2);
   const [days, setDays] = useState<number[]>([1, 3, 5]);
   const [targetValue, setTargetValue] = useState<number | ''>('');
+  const saving = useSaveAction();
+  const [initial] = useState(() =>
+    JSON.stringify([name, icon, polarity, quitStartDate, type, times, everyN, days, targetValue]),
+  );
+  const dirty =
+    initial !==
+    JSON.stringify([name, icon, polarity, quitStartDate, type, times, everyN, days, targetValue]);
+  const valid =
+    Boolean(name.trim()) &&
+    (targetValue === '' || targetValue > 0) &&
+    (polarity === 'quit'
+      ? Boolean(quitStartDate) && quitStartDate <= todayFn()
+      : type === 'timesPerWeek'
+        ? Number.isInteger(times) && Number(times) >= 1 && Number(times) <= 7
+        : type === 'everyNDays'
+          ? Number.isInteger(everyN) && Number(everyN) >= 1
+          : type === 'weekdays'
+            ? days.length > 0
+            : true);
 
   const schedule = (): HabitSchedule => {
     if (type === 'weekdays') return { type: 'weekdays', days };
@@ -513,7 +691,7 @@ function HabitEditorSheet({
   };
 
   const save = async () => {
-    if (!name.trim()) return;
+    if (!valid) return;
     await repos.habits.create({
       name: name.trim(),
       icon,
@@ -531,16 +709,29 @@ function HabitEditorSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => !saving.busy && onClose()}
+      dirty={dirty}
+      onSave={valid ? () => void saving.run(save) : undefined}
       title={t('habits.new')}
       footer={
-        <Button variant="primary" full disabled={!name.trim()} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          full
+          disabled={!valid || saving.busy}
+          onClick={() => void saving.run(save)}
+        >
           {t('common.save')}
         </Button>
       }
     >
       <div className="space-y-3">
-        <TextField value={name} onChange={setName} aria-label={t('habits.name')} placeholder={t('habits.name')} />
+        {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+        <TextField
+          value={name}
+          onChange={setName}
+          aria-label={t('habits.name')}
+          placeholder={t('habits.name')}
+        />
         <TextField value={icon} onChange={setIcon} aria-label={t('habits.icon')} maxLength={2} />
 
         <div>
@@ -606,10 +797,18 @@ function HabitEditorSheet({
         ) : null}
 
         {type === 'timesPerWeek' ? (
-          <NumberField value={times} onChange={setTimes} aria-label={t('habits.scheduleTypes.timesPerWeek')} />
+          <NumberField
+            value={times}
+            onChange={setTimes}
+            aria-label={t('habits.scheduleTypes.timesPerWeek')}
+          />
         ) : null}
         {type === 'everyNDays' ? (
-          <NumberField value={everyN} onChange={setEveryN} aria-label={t('habits.scheduleTypes.everyNDays')} />
+          <NumberField
+            value={everyN}
+            onChange={setEveryN}
+            aria-label={t('habits.scheduleTypes.everyNDays')}
+          />
         ) : null}
 
         <div>

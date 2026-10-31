@@ -1,0 +1,37 @@
+import { chromium } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
+const browser = await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+const context=await browser.newContext({viewport:{width:390,height:844},locale:'ru-RU'});
+const page=await context.newPage();
+const result={};
+try {
+await page.goto('http://127.0.0.1:5174');
+await page.getByPlaceholder('Имя профиля').fill('Probe');
+await page.getByRole('button',{name:'Новый профиль',exact:true}).click();
+for(let i=0;i<4;i++) await page.getByRole('button',{name:'Далее',exact:true}).click();
+await page.getByLabel('Стартовый вес').fill('80');
+for(let i=0;i<2;i++) await page.getByRole('button',{name:'Далее',exact:true}).click();
+await page.getByRole('button',{name:'Готово',exact:true}).click();
+await page.getByRole('navigation').waitFor();
+await page.getByRole('link',{name:'Тело',exact:true}).click();
+const weight=page.getByRole('textbox').first();
+await weight.pressSequentially('80,5');
+result.decimalInput={typed:'80,5',actual:await weight.inputValue()};
+await page.getByRole('button',{name:'Сон',exact:true}).click();
+const times=page.locator('input[type=time]');
+await times.nth(0).fill('01:00'); await times.nth(1).fill('09:30');
+await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+await page.getByRole('button',{name:'Вес',exact:true}).click();
+await page.getByRole('button',{name:'Сон',exact:true}).click();
+result.sleepReopened={bed:await times.nth(0).inputValue(),wake:await times.nth(1).inputValue()};
+await page.getByRole('link',{name:'Еда',exact:true}).click();
+await page.getByRole('button',{name:/ещё 4 приёма/}).click();
+await page.getByRole('button',{name:/Записать.*обед/i}).click();
+await page.getByRole('button',{name:'Быстро',exact:true}).click();
+await page.getByLabel('Калории',{exact:true}).fill('123');
+await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+result.lunchEntry=await page.locator('main').innerText();
+} catch(e){result.probeError=e.message;}
+await writeFile(new URL('./probe-results.json',import.meta.url),JSON.stringify(result,null,2));
+console.log(JSON.stringify(result));
+await browser.close();

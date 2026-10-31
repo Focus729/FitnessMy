@@ -17,14 +17,20 @@ import { useSettings } from './hooks';
  * Остальные вкладки подгружаются по требованию: графики и сканер штрихкода
  * не должны попадать в путь первой отрисовки (19.2, цель < 1.0 с).
  */
-const Onboarding = lazy(() => import('@/screens/Onboarding').then((m) => ({ default: m.Onboarding })));
+const Onboarding = lazy(() =>
+  import('@/screens/Onboarding').then((m) => ({ default: m.Onboarding })),
+);
 const FoodScreen = lazy(() => import('@/screens/Food').then((m) => ({ default: m.FoodScreen })));
 const GymScreen = lazy(() => import('@/screens/Gym').then((m) => ({ default: m.GymScreen })));
 const ActiveWorkoutScreen = lazy(() =>
-  import('@/screens/ActiveWorkout').then((m) => ({ default: m.ActiveWorkoutScreen })),
+  import('@/screens/ActiveWorkout').then((m) => ({
+    default: m.ActiveWorkoutScreen,
+  })),
 );
 const WorkoutDetailScreen = lazy(() =>
-  import('@/screens/WorkoutDetail').then((m) => ({ default: m.WorkoutDetailScreen })),
+  import('@/screens/WorkoutDetail').then((m) => ({
+    default: m.WorkoutDetailScreen,
+  })),
 );
 const BodyScreen = lazy(() => import('@/screens/Body').then((m) => ({ default: m.BodyScreen })));
 const ProgressScreen = lazy(() =>
@@ -43,7 +49,7 @@ export function App() {
   if (!activeProfileId || !unlocked) return <ProfileGate />;
 
   return (
-    <RepositoriesProvider profileId={activeProfileId}>
+    <RepositoriesProvider key={activeProfileId} profileId={activeProfileId}>
       <ProfileScope profileId={activeProfileId} />
     </RepositoriesProvider>
   );

@@ -5,11 +5,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
+import { useSaveAction } from '@/app/useSaveAction';
 import type { Food } from '@/domain/model';
 import { searchKeyFor } from '@/domain/nutrition/search';
 import { Button, NumberField, Sheet, TextField, Label } from '@/design-system/primitives';
 
-export function FoodEditorSheet({
+export function FoodEditorSheet(props: Parameters<typeof FoodEditorSession>[0]) {
+  return props.open ? <FoodEditorSession {...props} /> : null;
+}
+
+function FoodEditorSession({
   open,
   onClose,
   onSaved,
@@ -24,19 +29,35 @@ export function FoodEditorSheet({
 }) {
   const { t } = useTranslation();
   const repos = useRepos();
+  const saving = useSaveAction();
 
   const [name, setName] = useState(existing?.name ?? preset?.name ?? '');
   const [brand, setBrand] = useState(existing?.brand ?? preset?.brand ?? '');
-  const [kcal, setKcal] = useState<number | ''>(existing?.per100.kcal ?? preset?.per100?.kcal ?? '');
+  const [kcal, setKcal] = useState<number | ''>(
+    existing?.per100.kcal ?? preset?.per100?.kcal ?? '',
+  );
   const [protein, setProtein] = useState<number | ''>(existing?.per100.proteinG ?? '');
   const [fat, setFat] = useState<number | ''>(existing?.per100.fatG ?? '');
   const [carb, setCarb] = useState<number | ''>(existing?.per100.carbG ?? '');
   const [fiber, setFiber] = useState<number | ''>(existing?.per100.fiberG ?? '');
   const [servingName, setServingName] = useState('');
   const [servingGrams, setServingGrams] = useState<number | ''>('');
+  const [initial] = useState(() =>
+    JSON.stringify([name, brand, kcal, protein, fat, carb, fiber, servingName, servingGrams]),
+  );
+  const dirty =
+    initial !==
+    JSON.stringify([name, brand, kcal, protein, fat, carb, fiber, servingName, servingGrams]);
+  const valid =
+    Boolean(name.trim()) &&
+    kcal !== '' &&
+    [kcal, protein, fat, carb, fiber].every(
+      (value) => value === '' || (Number.isFinite(value) && value >= 0),
+    ) &&
+    (!servingName.trim() || (servingGrams !== '' && servingGrams > 0));
 
   const save = async () => {
-    if (!name.trim() || kcal === '') return;
+    if (!valid) return;
     const per100 = {
       kcal,
       proteinG: protein === '' ? 0 : protein,
@@ -75,33 +96,80 @@ export function FoodEditorSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => !saving.busy && onClose()}
+      dirty={dirty}
+      onSave={valid ? () => void saving.run(save) : undefined}
       title={t('food.createFood')}
       footer={
-        <Button variant="primary" full disabled={!name.trim() || kcal === ''} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          full
+          disabled={!valid || saving.busy}
+          onClick={() => void saving.run(save)}
+        >
           {t('common.save')}
         </Button>
       }
     >
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       <p className="text-caption text-muted">{t('food.createFoodMinimal')}</p>
 
       <div className="mt-3 space-y-3">
-        <TextField value={name} onChange={setName} aria-label={t('common.name')} placeholder={t('common.name')} />
+        <TextField
+          value={name}
+          onChange={setName}
+          aria-label={t('common.name')}
+          placeholder={t('common.name')}
+        />
         <div>
           <Label>{t('food.per100', { unit: t('units.g') })}</Label>
           <div className="mt-1 grid grid-cols-2 gap-2">
-            <NumberField value={kcal} onChange={setKcal} suffix={t('units.kcal')} aria-label={t('units.kcal')} />
-            <NumberField value={protein} onChange={setProtein} suffix={t('today.protein')} aria-label={t('today.proteinFull')} />
-            <NumberField value={fat} onChange={setFat} suffix={t('today.fat')} aria-label={t('today.fatFull')} />
-            <NumberField value={carb} onChange={setCarb} suffix={t('today.carb')} aria-label={t('today.carbFull')} />
-            <NumberField value={fiber} onChange={setFiber} suffix={t('today.fiber')} aria-label={t('today.fiberFull')} />
+            <NumberField
+              value={kcal}
+              onChange={setKcal}
+              suffix={t('units.kcal')}
+              aria-label={t('units.kcal')}
+            />
+            <NumberField
+              value={protein}
+              onChange={setProtein}
+              suffix={t('today.protein')}
+              aria-label={t('today.proteinFull')}
+            />
+            <NumberField
+              value={fat}
+              onChange={setFat}
+              suffix={t('today.fat')}
+              aria-label={t('today.fatFull')}
+            />
+            <NumberField
+              value={carb}
+              onChange={setCarb}
+              suffix={t('today.carb')}
+              aria-label={t('today.carbFull')}
+            />
+            <NumberField
+              value={fiber}
+              onChange={setFiber}
+              suffix={t('today.fiber')}
+              aria-label={t('today.fiberFull')}
+            />
           </div>
         </div>
         <div>
           <Label>{t('food.servings')}</Label>
           <div className="mt-1 grid grid-cols-2 gap-2">
-            <TextField value={servingName} onChange={setServingName} aria-label={t('food.servings')} />
-            <NumberField value={servingGrams} onChange={setServingGrams} suffix={t('units.g')} aria-label={t('units.g')} />
+            <TextField
+              value={servingName}
+              onChange={setServingName}
+              aria-label={t('food.servings')}
+            />
+            <NumberField
+              value={servingGrams}
+              onChange={setServingGrams}
+              suffix={t('units.g')}
+              aria-label={t('units.g')}
+            />
           </div>
         </div>
         <TextField value={brand} onChange={setBrand} aria-label="brand" placeholder="—" />

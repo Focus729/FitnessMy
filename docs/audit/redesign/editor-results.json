@@ -1,0 +1,14 @@
+[
+  {
+    "locale": "ru-RU",
+    "waistCm": 101.60000000000001,
+    "backupReminderAndSnooze": "passed",
+    "errors": []
+  },
+  {
+    "locale": "en-US",
+    "waistCm": 101.60000000000001,
+    "backupReminderAndSnooze": "passed",
+    "errors": []
+  }
+]

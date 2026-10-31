@@ -3,7 +3,13 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'node:path';
 
+const appBase = process.env.APP_BASE_PATH ?? '/';
+if (!/^\/(?:[A-Za-z0-9_-]+\/)*$/.test(appBase)) {
+  throw new Error('APP_BASE_PATH must be a root-relative directory ending with a slash');
+}
+
 export default defineConfig({
+  base: appBase,
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },
@@ -27,6 +33,20 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'release-build-identity',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'build-info.json',
+          source: JSON.stringify({
+            revision: process.env.BUILD_REVISION ?? 'local-unreleased',
+            base: appBase,
+            builtAt: new Date().toISOString(),
+          }),
+        });
+      },
+    },
     VitePWA({
       registerType: 'prompt',
       injectRegister: null,
@@ -39,8 +59,8 @@ export default defineConfig({
         background_color: '#F5F6F8',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
+        start_url: appBase,
+        scope: appBase,
         lang: 'ru',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -84,6 +104,9 @@ export default defineConfig({
     }),
   ],
   test: {
+    // Keep jsdom checks stable alongside the desktop app on memory-limited machines.
+    maxWorkers: 1,
+    minWorkers: 1,
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

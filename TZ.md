@@ -1,3 +1,4 @@
+> Approved amendment (2026-10-29): PLAN.md and DESIGN.md direction B take precedence over the historical five-block Today rule, universal phone-width layout, and bottom-sheet-only desktop geometry. Core data integrity, offline, profile isolation, RU/EN, and accessibility requirements remain in force. This document retains the original specification as historical context.
 # Техническое задание: персональное веб-приложение для питания, тренировок и здоровья
 
 **Кодовое имя проекта:** `Lenta` (рабочее, можно менять)

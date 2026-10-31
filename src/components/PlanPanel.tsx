@@ -1,3 +1,4 @@
+import { MeasureField } from '@/components/MeasureField';
 /**
  * Планирование тренировок — задача 2 доработки 0.7.
  *
@@ -6,16 +7,18 @@
  * свободно) или пустым. Просроченные планы не удаляются: их предлагают
  * перенести на сегодня или пропустить.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useRouteState } from '@/app/navigation';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
 import { useQueryWithDefault } from '@/data/repositories/hooks';
 import { useSettings, useToday } from '@/app/hooks';
+import { useSaveAction } from '@/app/useSaveAction';
 import type { PlannedItem, PlannedStatus, PlannedWorkout, Routine } from '@/domain/model';
 import { groupByDate, itemsFromRoutineDay, nextPlannedDates } from '@/domain/training/planning';
-import { prefillFromLast } from '@/domain/training/progression';
-import { addDays, isoWeekday, nowIso, startOfMonth, today as todayFn } from '@/lib/date';
+
+import { addDays, isoWeekday, startOfMonth } from '@/lib/date';
 import { dateShort, monthLong } from '@/lib/format';
 import { uuid } from '@/lib/id';
 import {
@@ -46,11 +49,12 @@ export function PlanPanel() {
   const settings = useSettings();
   const today = useToday();
 
-  const [month, setMonth] = useState(() => startOfMonth(todayFn()));
-  const [selected, setSelected] = useState<string>(today);
+  const [selected, setSelected] = useRouteState('date', today);
+  const [month, setMonth] = useState(() => startOfMonth(selected));
   const [editing, setEditing] = useState<PlannedWorkout | null | undefined>(undefined);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
+  const saving = useSaveAction();
 
   const plans = useQueryWithDefault((r) => r.plannedWorkouts.all(), EMPTY);
   const overdue = useQueryWithDefault((r) => r.plannedWorkouts.overdue(today), EMPTY, [today]);
@@ -58,7 +62,10 @@ export function PlanPanel() {
   const routines = useQueryWithDefault((r) => r.routines.all(), EMPTY);
 
   const byDate = useMemo(() => groupByDate(plans), [plans]);
-  const grid = useMemo(() => monthGrid(month, settings.firstDayOfWeek), [month, settings.firstDayOfWeek]);
+  const grid = useMemo(
+    () => monthGrid(month, settings.firstDayOfWeek),
+    [month, settings.firstDayOfWeek],
+  );
   const dayPlans = byDate.get(selected) ?? [];
   const exerciseName = useMemo(() => {
     const map = new Map(exercises.map((e) => [e.id, e] as const));
@@ -70,43 +77,25 @@ export function PlanPanel() {
   }, [exercises, settings.locale]);
 
   /** План → факт: создаём тренировку и подходы по целям плана. */
+  const starting = useRef(false);
+  const [startError, setStartError] = useState(false);
   const startPlan = async (plan: PlannedWorkout) => {
-    const workout = await repos.workouts.create({
-      date: todayFn(),
-      startedAt: nowIso(),
-      routineId: plan.routineId,
-      routineDayId: plan.routineDayId,
-      name: plan.name,
-      totalVolumeKg: 0,
-      totalSets: 0,
-      exerciseOrder: [...plan.items].sort((a, b) => a.order - b.order).map((i) => i.exerciseId),
-    });
-
-    for (const item of [...plan.items].sort((a, b) => a.order - b.order)) {
-      const lastSets = await repos.workoutSets.lastSessionSets(item.exerciseId, workout.id);
-      for (let index = 0; index < Math.max(1, item.targetSets); index++) {
-        // Вес — из цели плана, иначе из последнего результата (автоподстановка).
-        const prefill = prefillFromLast(lastSets, index);
-        await repos.workoutSets.create({
-          workoutId: workout.id,
-          exerciseId: item.exerciseId,
-          order: index,
-          supersetGroup: item.supersetGroup,
-          weightKg: item.targetWeightKg ?? prefill?.weightKg ?? 0,
-          reps: prefill?.reps ?? item.targetRepsMin,
-          type: 'normal',
-          isCompleted: false,
-          estimated1RM: 0,
-        });
-      }
+    if (starting.current) return;
+    starting.current = true;
+    setStartError(false);
+    try {
+      const workout = await repos.workouts.startPlanned(plan.id);
+      navigate(`/workout/${workout.id}`);
+    } catch {
+      setStartError(true);
+    } finally {
+      starting.current = false;
     }
-
-    await repos.plannedWorkouts.setStatus(plan.id, 'started', workout.id);
-    navigate(`/workout/${workout.id}`);
   };
-
   return (
     <div className="space-y-4">
+      {startError ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       {overdue.length > 0 ? (
         <Panel title={t('gym.planOverdue')}>
           <ul className="divide-y divide-hairline">
@@ -114,17 +103,31 @@ export function PlanPanel() {
               <li key={plan.id} className="py-2">
                 <div className="flex items-baseline justify-between">
                   <span className="truncate text-body">{plan.name}</span>
-                  <span className="tnum text-caption text-muted">{dateShort(plan.plannedDate)}</span>
+                  <span className="tnum text-caption text-muted">
+                    {dateShort(plan.plannedDate)}
+                  </span>
                 </div>
                 <div className="mt-1 flex gap-2">
                   <Button
-                    onClick={() => void repos.plannedWorkouts.update(plan.id, { plannedDate: today })}
+                    disabled={saving.busy}
+                    onClick={() =>
+                      void saving.run(async () => {
+                        await repos.plannedWorkouts.update(plan.id, {
+                          plannedDate: today,
+                        });
+                      })
+                    }
                   >
                     {t('gym.planMoveToday')}
                   </Button>
                   <Button
                     variant="ghost"
-                    onClick={() => void repos.plannedWorkouts.setStatus(plan.id, 'skipped')}
+                    disabled={saving.busy}
+                    onClick={() =>
+                      void saving.run(async () => {
+                        await repos.plannedWorkouts.setStatus(plan.id, 'skipped');
+                      })
+                    }
                   >
                     {t('gym.planSkip')}
                   </Button>
@@ -219,10 +222,13 @@ export function PlanPanel() {
                   <Button onClick={() => setEditing(plan)}>{t('common.edit')}</Button>
                   <Button
                     variant="danger"
-                    onClick={() => {
-                      void repos.plannedWorkouts.remove(plan.id);
-                      setUndoId(plan.id);
-                    }}
+                    disabled={saving.busy}
+                    onClick={() =>
+                      void saving.run(async () => {
+                        await repos.plannedWorkouts.remove(plan.id);
+                        setUndoId(plan.id);
+                      })
+                    }
                   >
                     {t('common.delete')}
                   </Button>
@@ -237,13 +243,15 @@ export function PlanPanel() {
         {t('gym.planBulk')}
       </Button>
 
-      <PlanEditorSheet
-        open={editing !== undefined}
-        plan={editing ?? undefined}
-        date={selected}
-        routines={routines}
-        onClose={() => setEditing(undefined)}
-      />
+      {editing !== undefined ? (
+        <PlanEditorSheet
+          open={editing !== undefined}
+          plan={editing ?? undefined}
+          date={selected}
+          routines={routines}
+          onClose={() => setEditing(undefined)}
+        />
+      ) : null}
 
       <BulkPlanSheet
         open={bulkOpen}
@@ -257,10 +265,12 @@ export function PlanPanel() {
         <UndoToast
           message={t('gym.planDeleted')}
           actionLabel={t('common.undo')}
-          onAction={() => {
-            void repos.plannedWorkouts.restore(undoId);
-            setUndoId(null);
-          }}
+          onAction={() =>
+            void saving.run(async () => {
+              await repos.plannedWorkouts.restore(undoId);
+              setUndoId(null);
+            })
+          }
           onExpire={() => setUndoId(null)}
         />
       ) : null}
@@ -295,6 +305,7 @@ function PlanEditorSheet({
   const [dayId, setDayId] = useState(plan?.routineDayId ?? '');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shiftFollowing, setShiftFollowing] = useState(false);
+  const saving = useSaveAction();
   const [key, setKey] = useState<string | undefined>(plan?.id);
 
   // Сброс формы при смене редактируемого плана — без useEffect, по ключу.
@@ -329,8 +340,23 @@ function PlanEditorSheet({
     plan == null
       ? name.trim().length > 0 || items.length > 0
       : name !== plan.name || plannedDate !== plan.plannedDate || items !== plan.items;
+  const valid =
+    Boolean(plannedDate) &&
+    items.every(
+      (item) =>
+        Number.isInteger(item.targetSets) &&
+        item.targetSets >= 1 &&
+        item.targetSets <= 50 &&
+        Number.isInteger(item.targetRepsMin) &&
+        item.targetRepsMin >= 1 &&
+        Number.isInteger(item.targetRepsMax) &&
+        item.targetRepsMax >= item.targetRepsMin &&
+        item.targetRepsMax <= 1000 &&
+        (item.targetWeightKg == null || (item.targetWeightKg >= 0 && item.targetWeightKg <= 1500)),
+    );
 
   const save = async () => {
+    if (!valid) return;
     const payload = {
       plannedDate,
       name: name.trim() || t('gym.planFree'),
@@ -355,17 +381,28 @@ function PlanEditorSheet({
     <>
       <Sheet
         open={open}
-        onClose={onClose}
+        onClose={() => !saving.busy && onClose()}
         dirty={dirty}
-        onSave={() => void save()}
+        onSave={valid ? () => void saving.run(save) : undefined}
         title={plan ? t('common.edit') : t('gym.planNew')}
         footer={
-          <Button variant="primary" full onClick={() => void save()}>
+          <Button
+            variant="primary"
+            full
+            disabled={!valid || saving.busy}
+            onClick={() => void saving.run(save)}
+          >
             {t('common.save')}
           </Button>
         }
       >
         <div className="space-y-3">
+          {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+          {!valid ? (
+            <p role="alert" className="text-caption text-over">
+              {t('gym.planBounds')}
+            </p>
+          ) : null}
           <div>
             <SectionHeader title={t('gym.planDate')} />
             <input
@@ -456,22 +493,46 @@ function PlanEditorSheet({
                     <div className="mt-1 grid grid-cols-4 gap-1">
                       <NumberField
                         value={item.targetSets}
-                        onChange={(v) => setItems((cur) => patch(cur, item.id, { targetSets: v === '' ? 1 : v }))}
+                        onChange={(v) =>
+                          setItems((cur) =>
+                            patch(cur, item.id, {
+                              targetSets: v === '' ? 1 : v,
+                            }),
+                          )
+                        }
                         aria-label={t('gym.targetSets')}
                       />
                       <NumberField
                         value={item.targetRepsMin}
-                        onChange={(v) => setItems((cur) => patch(cur, item.id, { targetRepsMin: v === '' ? 1 : v }))}
+                        onChange={(v) =>
+                          setItems((cur) =>
+                            patch(cur, item.id, {
+                              targetRepsMin: v === '' ? 1 : v,
+                            }),
+                          )
+                        }
                         aria-label={t('gym.targetReps')}
                       />
                       <NumberField
                         value={item.targetRepsMax}
-                        onChange={(v) => setItems((cur) => patch(cur, item.id, { targetRepsMax: v === '' ? 1 : v }))}
+                        onChange={(v) =>
+                          setItems((cur) =>
+                            patch(cur, item.id, {
+                              targetRepsMax: v === '' ? 1 : v,
+                            }),
+                          )
+                        }
                         aria-label={t('gym.targetReps')}
                       />
-                      <NumberField
+                      <MeasureField
                         value={item.targetWeightKg ?? ''}
-                        onChange={(v) => setItems((cur) => patch(cur, item.id, { targetWeightKg: v === '' ? undefined : v }))}
+                        onChange={(v) =>
+                          setItems((cur) =>
+                            patch(cur, item.id, {
+                              targetWeightKg: v === '' ? undefined : v,
+                            }),
+                          )
+                        }
                         aria-label={t('gym.targetWeight')}
                       />
                     </div>
@@ -535,7 +596,10 @@ function BulkPlanSheet({
   const generate = async () => {
     if (!routine) return;
     const count = (weeks === '' ? 1 : weeks) * Math.max(1, weekdays.length);
-    const dates = nextPlannedDates(routine, from, count, { weekdays, busyDates });
+    const dates = nextPlannedDates(routine, from, count, {
+      weekdays,
+      busyDates,
+    });
     for (const item of dates) {
       await repos.plannedWorkouts.create({
         plannedDate: item.date,

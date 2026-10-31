@@ -1,0 +1,26 @@
+[
+  {
+    "lang": "ru",
+    "width": 390,
+    "theme": "light",
+    "errors": []
+  },
+  {
+    "lang": "en",
+    "width": 390,
+    "theme": "dark",
+    "errors": []
+  },
+  {
+    "lang": "ru",
+    "width": 1440,
+    "theme": "light",
+    "errors": []
+  },
+  {
+    "lang": "en",
+    "width": 1440,
+    "theme": "dark",
+    "errors": []
+  }
+]

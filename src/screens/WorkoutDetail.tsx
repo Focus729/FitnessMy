@@ -1,3 +1,4 @@
+import { toDisplay, unitKey } from '@/lib/units';
 /**
  * Просмотр и правка завершённой тренировки — задача 1 доработки 0.7.
  *
@@ -59,7 +60,11 @@ export function WorkoutDetailScreen() {
   if (!workout) return null;
 
   const label = (exercise: Exercise | undefined, id: string) =>
-    !exercise ? id : settings.locale === 'ru' && exercise.nameI18n?.ru ? exercise.nameI18n.ru : exercise.name;
+    !exercise
+      ? id
+      : settings.locale === 'ru' && exercise.nameI18n?.ru
+        ? exercise.nameI18n.ru
+        : exercise.name;
 
   const addExercise = async (exercise: Exercise) => {
     await repos.workouts.updateWorkout(workout.id, {
@@ -104,8 +109,8 @@ export function WorkoutDetailScreen() {
         <div className="grid grid-cols-3 gap-3">
           <MetricValue
             label={t('gym.volume')}
-            value={num(workout.totalVolumeKg)}
-            unit={t('units.kg')}
+            value={num(toDisplay(workout.totalVolumeKg, 'mass', settings.units), 1)}
+            unit={t(`units.${unitKey('mass', settings.units)}`)}
             size="lg"
           />
           <MetricValue label={t('gym.set')} value={workout.totalSets} size="lg" />
@@ -135,7 +140,7 @@ export function WorkoutDetailScreen() {
                 title={label(exercise, exerciseId)}
                 hint={
                   stats
-                    ? `${num(stats.volumeKg)} ${t('units.kg')} · ${t('gym.sets', { count: stats.sets })}`
+                    ? `${num(toDisplay(stats.volumeKg, 'mass', settings.units), 1)} ${t(`units.${unitKey('mass', settings.units)}`)} · ${t('gym.sets', { count: stats.sets })}`
                     : undefined
                 }
               />
@@ -145,7 +150,9 @@ export function WorkoutDetailScreen() {
                   sets={exerciseSets}
                   onChangeSet={(setId, patch) => void repos.workouts.updateSet(setId, patch)}
                   onToggleComplete={(set: WorkoutSet) =>
-                    void repos.workouts.updateSet(set.id, { isCompleted: !set.isCompleted })
+                    void repos.workouts.updateSet(set.id, {
+                      isCompleted: !set.isCompleted,
+                    })
                   }
                   onRemoveSet={(setId) => void repos.workouts.removeSet(setId)}
                   onAddSet={(type) => void addSet(exerciseId, type)}
@@ -158,7 +165,8 @@ export function WorkoutDetailScreen() {
                         {i + 1} · {t(`gym.setTypes.${set.type}`)}
                       </span>
                       <span>
-                        {num(set.weightKg)} {t('units.kg')} × {set.reps}
+                        {num(toDisplay(set.weightKg, 'mass', settings.units), 1)}{' '}
+                        {t(`units.${unitKey('mass', settings.units)}`)} × {set.reps}
                         {set.rpe != null ? ` · ${t('gym.rpe')} ${set.rpe}` : ''}
                       </span>
                     </li>
@@ -208,7 +216,12 @@ function WorkoutMetaSheet({
   open: boolean;
   onClose: () => void;
   workoutId: string;
-  initial: { name: string; date: string; notes: string; feelRating?: 1 | 2 | 3 | 4 | 5 };
+  initial: {
+    name: string;
+    date: string;
+    notes: string;
+    feelRating?: 1 | 2 | 3 | 4 | 5;
+  };
 }) {
   const { t } = useTranslation();
   const repos = useRepos();

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRepos } from '@/data/repositories/context';
+import { useSaveAction } from '@/app/useSaveAction';
 import { useQuery } from '@/data/repositories/hooks';
 import { computeDish } from '@/domain/nutrition/recipe';
 import type { Nutrients } from '@/domain/model';
@@ -20,11 +21,23 @@ export function DishEditorSheet({
 }) {
   const { t } = useTranslation();
   const repos = useRepos();
-  const dish = useQuery((r) => (dishId ? r.dishes.get(dishId) : Promise.resolve(undefined)), [dishId]);
+  const saving = useSaveAction();
+  const dish = useQuery(
+    (r) => (dishId ? r.dishes.get(dishId) : Promise.resolve(undefined)),
+    [dishId],
+  );
   const foods = useQuery((r) => r.foods.all()) ?? [];
 
   const [name, setName] = useState('');
   const [components, setComponents] = useState<ComponentRow[]>([]);
+  const dirty =
+    name !== (dish?.name ?? '') ||
+    JSON.stringify(components) !== JSON.stringify(dish?.components ?? []);
+  const valid =
+    (!dishId || Boolean(dish)) &&
+    Boolean(name.trim()) &&
+    components.length > 0 &&
+    components.every((component) => component.grams > 0);
 
   useEffect(() => {
     setName(dish?.name ?? '');
@@ -39,6 +52,7 @@ export function DishEditorSheet({
   );
 
   const save = async () => {
+    if (!valid) return;
     const payload = {
       name: name.trim(),
       components,
@@ -54,20 +68,28 @@ export function DishEditorSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => !saving.busy && onClose()}
+      dirty={dirty}
+      onSave={valid ? () => void saving.run(save) : undefined}
       title={t('food.dishTitle')}
       footer={
         <Button
           variant="primary"
           full
-          disabled={!name.trim() || components.length === 0}
-          onClick={() => void save()}
+          disabled={!valid || saving.busy}
+          onClick={() => void saving.run(save)}
         >
           {t('common.save')}
         </Button>
       }
     >
-      <TextField value={name} onChange={setName} aria-label={t('common.name')} placeholder={t('common.name')} />
+      {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      <TextField
+        value={name}
+        onChange={setName}
+        aria-label={t('common.name')}
+        placeholder={t('common.name')}
+      />
 
       <div className="mt-4">
         <Label>{t('food.dishComponents')}</Label>
@@ -77,8 +99,8 @@ export function DishEditorSheet({
       </div>
 
       <div className="tnum mt-4 text-caption text-muted">
-        {num(math.totalGrams)} {t('units.g')} · {num(Math.round(math.total.kcal))} {t('units.kcal')} ·{' '}
-        {t('today.protein')} {num(Math.round(math.total.proteinG))}
+        {num(math.totalGrams)} {t('units.g')} · {num(Math.round(math.total.kcal))} {t('units.kcal')}{' '}
+        · {t('today.protein')} {num(Math.round(math.total.proteinG))}
       </div>
     </Sheet>
   );

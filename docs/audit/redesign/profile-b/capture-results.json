@@ -1,0 +1,16 @@
+[
+  {
+    "lang": "ru",
+    "width": 390,
+    "theme": "light",
+    "errors": [],
+    "overflow": []
+  },
+  {
+    "lang": "en",
+    "width": 1440,
+    "theme": "dark",
+    "errors": [],
+    "overflow": []
+  }
+]

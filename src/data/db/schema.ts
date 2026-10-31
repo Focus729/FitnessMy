@@ -6,6 +6,16 @@
  * репозитории (правило 2.9, проверяется ESLint).
  */
 import Dexie, { type Table } from 'dexie';
+
+/** Kept outside profile replacement transactions and ordinary exports. */
+class RecoveryDB extends Dexie {
+  snapshots!: Table<{ profileId: string; backup: unknown }, string>;
+  constructor() {
+    super('lenta_recovery');
+    this.version(1).stores({ snapshots: 'profileId' });
+  }
+}
+export const recoveryDb = new RecoveryDB();
 import type {
   BlobRecord,
   BodyMetric,

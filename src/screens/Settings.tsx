@@ -1,3 +1,5 @@
+import { MeasureField } from '@/components/MeasureField';
+import { toDisplay, unitKey } from '@/lib/units';
 /**
  * Настройки — разделы 16 (данные, профили, копии, Диск), 15 (AI),
  * 18/19.4 (вид, приватность), 8.2 (норма и её пересчёт).
@@ -12,8 +14,10 @@ import {
   applyImport,
   BackupFormatError,
   downloadBackup,
+  type BackupFile,
   estimateStorage,
   exportBackup,
+  getRecoveryBackup,
   parseBackup,
   previewImport,
   requestPersistentStorage,
@@ -28,7 +32,11 @@ import {
   type DriveBackupInfo,
 } from '@/adapters/sync/googleDrive';
 import { PROVIDERS } from '@/adapters/ai';
-import { calculateTargets, shouldOfferRecalc, targetInputFromProfile } from '@/domain/nutrition/targets';
+import {
+  calculateTargets,
+  shouldOfferRecalc,
+  targetInputFromProfile,
+} from '@/domain/nutrition/targets';
 import { backupFileName } from '@/data/backup';
 import { bytes, isoDateTime, num } from '@/lib/format';
 import {
@@ -82,7 +90,10 @@ export function SettingsScreen() {
             value={settings.units}
             options={[
               { value: 'metric' as const, label: t('settings.unitsMetric') },
-              { value: 'imperial' as const, label: t('settings.unitsImperial') },
+              {
+                value: 'imperial' as const,
+                label: t('settings.unitsImperial'),
+              },
             ]}
             onChange={(v) => void update({ units: v })}
           />
@@ -130,8 +141,15 @@ export function SettingsScreen() {
             <Segmented
               ariaLabel={t('food.fastingScheme')}
               value={settings.fasting.windowHours}
-              options={[8, 6, 4].map((h) => ({ value: h, label: `${24 - h}:${h}` }))}
-              onChange={(v) => void update({ fasting: { ...settings.fasting, windowHours: v } })}
+              options={[8, 6, 4].map((h) => ({
+                value: h,
+                label: `${24 - h}:${h}`,
+              }))}
+              onChange={(v) =>
+                void update({
+                  fasting: { ...settings.fasting, windowHours: v },
+                })
+              }
             />
           </Field>
         ) : null}
@@ -189,7 +207,10 @@ function TargetsSection() {
             <Button
               onClick={() =>
                 void update({
-                  targets: { ...settings.targets, basedOnWeightKg: latest?.weightKg },
+                  targets: {
+                    ...settings.targets,
+                    basedOnWeightKg: latest?.weightKg,
+                  },
                 })
               }
             >
@@ -204,7 +225,10 @@ function TargetsSection() {
           ariaLabel={t('settings.targetsMode')}
           value={settings.targets.mode}
           options={[
-            { value: 'calculated' as const, label: t('settings.targetsCalculated') },
+            {
+              value: 'calculated' as const,
+              label: t('settings.targetsCalculated'),
+            },
             { value: 'manual' as const, label: t('settings.targetsManual') },
           ]}
           onChange={(v) => void update({ targets: { ...settings.targets, mode: v } })}
@@ -213,7 +237,11 @@ function TargetsSection() {
 
       <div className="grid grid-cols-2 gap-2">
         <TargetField label={t('units.kcal')} value={settings.targets.kcal} field="kcal" />
-        <TargetField label={t('today.proteinFull')} value={settings.targets.proteinG} field="proteinG" />
+        <TargetField
+          label={t('today.proteinFull')}
+          value={settings.targets.proteinG}
+          field="proteinG"
+        />
         <TargetField label={t('today.fatFull')} value={settings.targets.fatG} field="fatG" />
         <TargetField label={t('today.carbFull')} value={settings.targets.carbG} field="carbG" />
         <TargetField label={t('today.fiberFull')} value={settings.targets.fiberG} field="fiberG" />
@@ -243,7 +271,11 @@ function TargetField({
           aria-label={label}
           onChange={(v) =>
             void update({
-              targets: { ...settings.targets, [field]: v === '' ? 0 : v, mode: 'manual' },
+              targets: {
+                ...settings.targets,
+                [field]: v === '' ? 0 : v,
+                mode: 'manual',
+              },
             })
           }
         />
@@ -275,7 +307,8 @@ function MealSlotsSection() {
             <li key={slot.id} className="flex items-center gap-2">
               <TextField
                 value={
-                  ['breakfast', 'lunch', 'dinner', 'snack'].includes(slot.id)
+                  ['breakfast', 'lunch', 'dinner', 'snack'].includes(slot.id) &&
+                  slot.name === slot.id
                     ? t(`slots.${slot.id}`, slot.name)
                     : slot.name
                 }
@@ -285,9 +318,12 @@ function MealSlotsSection() {
               <button
                 type="button"
                 aria-label={t('common.delete')}
+                disabled={settings.mealSlots.length <= 1}
                 className="tappable justify-center px-2 text-muted"
                 onClick={() =>
-                  void update({ mealSlots: settings.mealSlots.filter((s) => s.id !== slot.id) })
+                  void update({
+                    mealSlots: settings.mealSlots.filter((s) => s.id !== slot.id),
+                  })
                 }
               >
                 <span aria-hidden="true">×</span>
@@ -330,17 +366,21 @@ function PlatesSection() {
   return (
     <Section title={t('settings.plates')}>
       <Field label={t('settings.barWeight')}>
-        <NumberField
+        <MeasureField
           value={settings.plates.barKg}
           aria-label={t('settings.barWeight')}
-          suffix={t('units.kg')}
+          suffix={t(`units.${unitKey('mass', settings.units)}`)}
           onChange={(v) =>
-            void update({ plates: { ...settings.plates, barKg: v === '' ? 20 : v } })
+            void update({
+              plates: { ...settings.plates, barKg: v === '' ? 20 : v },
+            })
           }
         />
       </Field>
       <p className="tnum text-caption text-muted">
-        {settings.plates.availableKg.map((p) => num(p)).join(' · ')}
+        {settings.plates.availableKg
+          .map((p) => num(toDisplay(p, 'mass', settings.units), 2))
+          .join(' · ')}
       </p>
 
       <Field label={t('settings.restDefault')}>
@@ -349,7 +389,12 @@ function PlatesSection() {
           aria-label={t('settings.restDefault')}
           suffix={t('units.sec')}
           onChange={(v) =>
-            void update({ restTimer: { ...settings.restTimer, defaultSec: v === '' ? 120 : v } })
+            void update({
+              restTimer: {
+                ...settings.restTimer,
+                defaultSec: v === '' ? 120 : v,
+              },
+            })
           }
         />
       </Field>
@@ -374,13 +419,22 @@ function DataSection() {
   const settings = useSettings();
   const update = useUpdateSettings();
   const { activeProfileId, refresh, leave } = useSession();
-  const [storage, setStorage] = useState<{ usageBytes: number; quotaBytes: number; persisted: boolean } | null>(null);
+  const [storage, setStorage] = useState<{
+    usageBytes: number;
+    quotaBytes: number;
+    persisted: boolean;
+  } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [pinValue, setPinValue] = useState<number | ''>('');
+  const [pinValue, setPinValue] = useState('');
+  const [dataError, setDataError] = useState(false);
+  const [storageUnavailable, setStorageUnavailable] = useState(false);
+  const recovery = useQuery(async (r) => getRecoveryBackup(r.profileId));
 
   useEffect(() => {
-    void estimateStorage().then(setStorage);
+    void estimateStorage()
+      .then(setStorage)
+      .catch(() => setStorageUnavailable(true));
   }, []);
 
   const ref = activeProfileId ? getProfileRef(activeProfileId) : undefined;
@@ -389,7 +443,9 @@ function DataSection() {
     if (!ref) return;
     const backup = await exportBackup(ref);
     downloadBackup(backup, ref.name);
-    await update({ sync: { ...settings.sync, lastBackupAt: new Date().toISOString() } });
+    await update({
+      sync: { ...settings.sync, lastBackupAt: new Date().toISOString() },
+    });
   };
 
   const wipe = async () => {
@@ -402,9 +458,22 @@ function DataSection() {
   return (
     <Section title={t('settings.sections.data')}>
       <p className="text-body text-muted">{t('settings.dataWhatBody')}</p>
+      <p className="text-caption text-muted">{t('settings.deviceStorageHint')}</p>
+      {dataError ? <p role="alert">{t('errors.saveFailed')}</p> : null}
+      {recovery ? (
+        <Button onClick={() => downloadBackup(recovery, `${recovery.profile.name}-recovery`)}>
+          {t('backup.downloadRecovery')}
+        </Button>
+      ) : null}
 
       <div className="tnum text-caption text-muted">
-        <div>{storage?.persisted ? t('settings.storagePersisted') : t('settings.storageNotPersisted')}</div>
+        <div>
+          {storageUnavailable
+            ? t('settings.storageUnavailable')
+            : storage?.persisted
+              ? t('settings.storagePersisted')
+              : t('settings.storageNotPersisted')}
+        </div>
         {storage ? (
           <div>
             {t('settings.storageUsage', {
@@ -415,21 +484,32 @@ function DataSection() {
         ) : null}
         <div>
           {settings.sync.lastBackupAt
-            ? t('settings.lastBackup', { date: isoDateTime(settings.sync.lastBackupAt) })
+            ? t('settings.lastBackup', {
+                date: isoDateTime(settings.sync.lastBackupAt),
+              })
             : t('settings.lastBackupNever')}
         </div>
       </div>
 
       {!storage?.persisted ? (
         <Button
-          onClick={() => void requestPersistentStorage().then(() => estimateStorage().then(setStorage))}
+          onClick={() =>
+            void requestPersistentStorage()
+              .then(() =>
+                estimateStorage().then((next) => {
+                  setStorage(next);
+                  setStorageUnavailable(false);
+                }),
+              )
+              .catch(() => setStorageUnavailable(true))
+          }
         >
           {t('onboarding.enablePersist')}
         </Button>
       ) : null}
 
       <div className="flex gap-2">
-        <Button full onClick={() => void doExport()}>
+        <Button full onClick={() => void doExport().catch(() => setDataError(true))}>
           {t('settings.exportBackup')}
         </Button>
         <Button full onClick={() => setImportOpen(true)}>
@@ -441,15 +521,17 @@ function DataSection() {
 
       <Field label={t('profiles.pinSet')}>
         <div className="flex gap-2">
-          <NumberField
+          <TextField
+            type="password"
+            inputMode="numeric"
             value={pinValue}
-            onChange={setPinValue}
+            onChange={(value) => setPinValue(value.replace(/\D/g, '').slice(0, 6))}
             aria-label={t('profiles.pinSet')}
             maxLength={6}
             className="flex-1"
           />
           <Button
-            disabled={!activeProfileId}
+            disabled={!activeProfileId || (pinValue !== '' && pinValue.length < 4)}
             onClick={() => {
               if (!activeProfileId) return;
               void setPin(activeProfileId, pinValue === '' ? null : String(pinValue)).then(refresh);
@@ -497,19 +579,21 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [selected, setSelected] = useState<BackupFile | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const handle = async (file: File) => {
     if (!activeProfileId) return;
     setError(null);
     setDone(false);
+    setSelected(null);
+    setPreview(null);
     try {
       const backup = parseBackup(await file.text());
-      if (mode === 'preview') {
-        setPreview(await previewImport(activeProfileId, backup));
-        return;
-      }
-      setPreview(await applyImport(activeProfileId, backup, mode));
-      setDone(true);
+      setPreview(
+        await previewImport(activeProfileId, backup, mode === 'replace' ? 'replace' : 'merge'),
+      );
+      setSelected(backup);
     } catch (e) {
       if (e instanceof BackupFormatError) {
         setError(
@@ -526,7 +610,13 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title={t('backup.importTitle')}>
+    <Sheet
+      open={open}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+      title={t('backup.importTitle')}
+    >
       <Segmented
         ariaLabel={t('backup.importMode')}
         value={mode}
@@ -535,7 +625,15 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
           { value: 'merge' as const, label: t('backup.modeMerge') },
           { value: 'replace' as const, label: t('backup.modeReplace') },
         ]}
-        onChange={setMode}
+        onChange={(value) => {
+          if (busy) return;
+          setMode(value);
+          setDone(false);
+          if (selected && activeProfileId)
+            void previewImport(activeProfileId, selected, value === 'replace' ? 'replace' : 'merge')
+              .then(setPreview)
+              .catch(() => setError(t('errors.importFailed')));
+        }}
       />
       <p className="mt-2 text-caption text-muted">
         {mode === 'replace' ? t('backup.modeReplaceHint') : t('backup.modeMergeHint')}
@@ -545,6 +643,7 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
         <input
           type="file"
           accept="application/json,.json"
+          disabled={busy}
           className="sr-only"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -564,6 +663,31 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
               name: preview.profileName,
             })}
           </p>
+          {mode === 'replace' ? (
+            <p>{t('backup.removed', { count: preview.totalRemoved })}</p>
+          ) : null}
+          <p>{t('backup.credentialsOmitted')}</p>
+          {selected && mode !== 'preview' && !done ? (
+            <Button
+              disabled={busy}
+              variant="primary"
+              onClick={async () => {
+                if (!activeProfileId || busy) return;
+                setBusy(true);
+                setError(null);
+                try {
+                  await applyImport(activeProfileId, selected, mode);
+                  setDone(true);
+                } catch {
+                  setError(t('errors.importFailed'));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {t(busy ? 'common.loading' : 'common.apply')}
+            </Button>
+          ) : null}
           <p className="tnum">
             {t('backup.previewResult', {
               added: preview.totalAdded,
@@ -585,6 +709,11 @@ function GoogleDriveBlock() {
   const [clientId, setClientId] = useState(settings.sync.gdriveClientId ?? '');
   const [backups, setBackups] = useState<DriveBackupInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{
+    backup: BackupFile;
+    preview: ImportPreview;
+  } | null>(null);
+  const [applying, setApplying] = useState(false);
 
   const save = async () => {
     if (!activeProfileId) return;
@@ -604,7 +733,9 @@ function GoogleDriveBlock() {
       setBackups(await listBackups(token));
       setError(null);
     } catch (e) {
-      setError(e instanceof DriveError ? t('settings.gdriveSetupNeeded') : t('errors.networkFailed'));
+      setError(
+        e instanceof DriveError ? t('settings.gdriveSetupNeeded') : t('errors.networkFailed'),
+      );
     }
   };
 
@@ -613,7 +744,10 @@ function GoogleDriveBlock() {
     try {
       const token = await authorize(clientId);
       const backup = await driveDownload(token, fileId);
-      await applyImport(activeProfileId, backup, 'merge');
+      setPending({
+        backup,
+        preview: await previewImport(activeProfileId, backup),
+      });
       setError(null);
     } catch {
       setError(t('errors.networkFailed'));
@@ -623,6 +757,39 @@ function GoogleDriveBlock() {
   return (
     <div className="space-y-2">
       <Label>{t('settings.gdrive')}</Label>
+      <Sheet
+        open={pending != null}
+        onClose={() => {
+          if (!applying) setPending(null);
+        }}
+        title={t('backup.importTitle')}
+      >
+        {pending ? (
+          <>
+            <p>
+              {t('backup.previewResult', {
+                added: pending.preview.totalAdded,
+                updated: pending.preview.totalUpdated,
+              })}
+            </p>
+            <p className="my-3 text-caption text-muted">{t('backup.credentialsOmitted')}</p>
+            <Button
+              disabled={applying}
+              onClick={() => {
+                if (!activeProfileId || applying) return;
+                setApplying(true);
+                void applyImport(activeProfileId, pending.backup, 'merge')
+                  .then(() => setPending(null))
+                  .catch(() => setError(t('errors.saveFailed')))
+                  .finally(() => setApplying(false));
+              }}
+            >
+              {t('common.apply')}
+            </Button>
+            {error ? <p role="alert">{error}</p> : null}
+          </>
+        ) : null}
+      </Sheet>
       <p className="text-caption text-muted">{t('settings.gdriveHint')}</p>
       <p className="text-caption text-muted">{t('settings.gdriveOptional')}</p>
 
@@ -702,7 +869,10 @@ function AISection() {
               value={ai.provider ?? ''}
               options={PROVIDERS.map((p) => ({ value: p.id, label: p.id }))}
               onChange={(v) =>
-                patchAI({ provider: v, model: PROVIDERS.find((p) => p.id === v)?.models[0] ?? null })
+                patchAI({
+                  provider: v,
+                  model: PROVIDERS.find((p) => p.id === v)?.models[0] ?? null,
+                })
               }
             />
           </Field>
@@ -746,7 +916,10 @@ function AISection() {
               onChange={(v) => patchAI({ monthlyCallLimit: v === '' ? 200 : v })}
             />
             <p className="tnum mt-1 text-caption text-muted">
-              {t('ai.callsUsed', { used: ai.callsThisMonth, limit: ai.monthlyCallLimit })}
+              {t('ai.callsUsed', {
+                used: ai.callsThisMonth,
+                limit: ai.monthlyCallLimit,
+              })}
             </p>
           </Field>
 
