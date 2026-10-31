@@ -1,0 +1,1 @@
+const t=a=>({mass:2.2046226218487757,length:.39370078740157477,distance:.621371192237334})[a],m=(a,i,s)=>s==="imperial"?a*t(i):a,c=(a,i,s)=>s==="imperial"?a/t(i):a,o=(a,i)=>a==="mass"?i==="imperial"?"lb":"kg":a==="distance"?i==="imperial"?"mi":"km":i==="imperial"?"in":"cm";export{c as a,m as t,o as u};
