@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { createProfile, verifyPin } from '@/data/profiles';
 import { useSession, applyTheme } from '@/app/store';
 import { Button, TextField } from '@/design-system/primitives';
+import { CloudAccount } from '@/components/CloudAccount';
 
 export function ProfileGate() {
   const { t } = useTranslation();
@@ -76,6 +77,7 @@ export function ProfileGate() {
     <Centered>
       <h1 className="text-title">{t('profiles.title')}</h1>
       <p className="mt-1 text-caption text-muted">{t('profiles.subtitle')}</p>
+      {import.meta.env.VITE_CLOUD_ENABLED === 'true' && <CloudAccount />}
 
       <ul className="mt-6 w-full space-y-2">
         {profiles.map((p) => (

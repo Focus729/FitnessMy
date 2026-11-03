@@ -12,6 +12,10 @@ Staging prototype checks: `npm run test:backend`, `npm run check:backend`, targe
 
 Latest staging auth verification (2026-11-03): source 4f9e4ae3add2ad422b9e4c8b980941d5f50950ee, Worker e76cd4bb-2023-4b63-8af4-263b2830db41, matching live build-info. Encrypted secret provisioned. Real GitHub callback/session and protected D1 health passed; independent anonymous request returned 401. Workers rejects redirect:error before network I/O; manual redirects preserve the no-forwarding policy. Fourteen auth tests, backend type/lint and root PWA build passed. Pavel confirmed physical-phone login and database:ready on 2026-11-03. Live logout/expiry and phone installation/offline checks remain pending; this is not a completed migration.
 
+### Staging account/profile increment
+
+Build staging with `VITE_CLOUD_ENABLED=true`, `APP_BASE_PATH=/` and `BUILD_REVISION=<source SHA>`. The cloud account panel is opt-in at build time; existing Pages builds remain local-only. Migration `0002_profiles.sql` is additive and applied only to fitnessmy-staging. It adds owned profile metadata, not synchronized history. Check `npm run test:backend`, `npm run check:backend`, affected lint, existing unit suite, `e2e/cloud-account.spec.ts`, `e2e/auth-cache.spec.ts`, root PWA build and `scripts/test-d1-profiles.mjs`. The remote proof script is hard-bound to staging and cleans only its generated synthetic owner. Verify real sign-out and sign-in after deploy. Do not link or upload local histories implicitly.
+
 ## Established target
 
 - Repository: public `Focus729/FitnessMy`, source branch `master`.

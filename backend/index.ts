@@ -1,5 +1,6 @@
 import { githubAuth, sessionIdentity, type GithubConfig } from './github-auth';
 import { HttpError, json } from './http';
+import { profilesApi } from './profiles';
 
 interface Env extends GithubConfig {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -14,6 +15,8 @@ export default {
     try {
       if (auth) return await githubAuth(request, env);
       const identity = await sessionIdentity(request, env);
+      if (path === '/api/profiles' || path.startsWith('/api/profiles/'))
+        return await profilesApi(request, env.DB!, identity.accountId, env.APP_ORIGIN!);
       if (request.method !== 'GET')
         return json({ error: 'method_not_allowed' }, 405);
       if (path === '/api/session')

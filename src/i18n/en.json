@@ -1,4 +1,17 @@
 {
+  "cloud": {
+    "title": "Cloud account",
+    "loading": "Checking sign-in…",
+    "signedIn": "Signed in with GitHub.",
+    "signedOut": "Sign in with your GitHub account.",
+    "unavailable": "Cannot check sign-in. Check your connection and try again.",
+    "signIn": "Sign in with GitHub",
+    "signOut": "Sign out of cloud account",
+    "signingOut": "Signing out…",
+    "retry": "Try again",
+    "logoutError": "Could not confirm sign-out. Connect to the internet and try again.",
+    "localNotice": "The profiles below are stored on this device. Cloud history sync is not available yet. Signing out does not delete local profiles."
+  },
   "common": {
     "appName": "Lenta",
     "save": "Save",
