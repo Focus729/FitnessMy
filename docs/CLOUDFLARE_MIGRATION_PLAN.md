@@ -93,7 +93,7 @@ Inspected affected code and release facts; verified official hosting, auth and s
 
 ### CF-M2 — Protected backend and complete data contract
 
-- **T2 (CF-01,04,07)**: implement identity verification, account mapping, profile ownership, session/logout behavior and request validation. Test forged/missing/expired/wrong-audience tokens, alternate URLs and simulated second account. Expected: only owned data accessible. State: Planned.
+- **T2 (CF-01,04,07)**: implement identity verification, account mapping, profile ownership, session/logout behavior and request validation. Test forged/missing/expired/wrong-audience tokens, alternate URLs and simulated second account. Expected: only owned data accessible. State: In progress. Account-owned profile metadata API and revision-guarded updates implemented; seven profile tests and real staging D1 concurrency proof passed. UI login/logout controls passed RU/EN mock browser flows; live logout awaits browser access. Entity and attachment APIs are still pending.
 - **T3 (CF-02,04,14)**: inventory schemas ([initial inventory](CLOUD_DATA_INVENTORY.md)), classify synced/local/derived data, implement versioned D1 schema and bounded atomic API operations, attachment chunks and isolated local migrations. Test rollback, invalid references, payload sizes, ownership and retry receipts. Expected: stable contract covering every existing data type. State: Planned.
 - Gate: actual D1 runtime integration tests prove concurrent compare-and-set, atomicity and idempotency; mocks alone are insufficient.
 
