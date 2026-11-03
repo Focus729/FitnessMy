@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["backend/**/*.ts", "vitest.backend.config.ts"]
+  "include": ["backend/**/*.ts", "vitest.backend.config.ts", "vitest.d1.config.ts", "scripts/test-d1-sync.test.ts"]
 }
