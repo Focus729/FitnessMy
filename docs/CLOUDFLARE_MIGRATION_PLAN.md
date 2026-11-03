@@ -65,7 +65,7 @@ All tasks start `Planned`; implemented / verified / released are separate states
 
 | Requirement | Expected result / acceptance | Tasks | Evidence now |
 | --- | --- | --- | --- |
-| CF-01 / SYNC-01 | Same authorized account loads the same selected profile in two independent browsers; another GitHub ID cannot enter | T1, T2, T5 | Auth implemented; 12 local SQLite-backed tests passed; live flow pending |
+| CF-01 / SYNC-01 | Same authorized account loads the same selected profile in two independent browsers; another GitHub ID cannot enter | T1, T2, T5 | Auth implemented; 14 local SQLite-backed tests passed; real GitHub login/session/D1 health verified; shared profile pending |
 | CF-02 / SYNC-02 | All inventoried user entities synchronize create/edit/delete/undo with no duplicates; observed convergence within 10 s under test conditions | T3, T4, T5 | Planned |
 | CF-03 / SYNC-03 | Offline edits survive reload and reconnect; first online initialization is clearly required | T1, T4, T8 | Planned |
 | CF-04 / SYNC-04 | Forged/expired tokens and foreign account/profile/attachment IDs cannot read or mutate records | T2, T3, T8 | Planned |
@@ -88,13 +88,13 @@ Inspected affected code and release facts; verified official hosting, auth and s
 
 ### CF-M1 — Account, target and technical proof
 
-- **T1 (CF-01,03,09,11,12)**: verify account permissions/free entitlements, capture non-secret target identifiers, configure Focus729's immutable GitHub ID and exact OAuth callback. Create isolated free staging resources and a minimal auth/PWA/D1 proof. Check real PC/mobile network reachability, login, offline relaunch and expiry. Expected: viable target and evidence before full implementation. State: In progress; Workers Free/CLI/D1 verified, GitHub app created, secret provisioning and live flow pending.
+- **T1 (CF-01,03,09,11,12)**: verify account permissions/free entitlements, capture non-secret target identifiers, configure Focus729's immutable GitHub ID and exact OAuth callback. Create isolated free staging resources and a minimal auth/PWA/D1 proof. Check real PC/mobile network reachability, login, offline relaunch and expiry. Expected: viable target and evidence before full implementation. State: In progress; Workers Free/CLI/D1 verified, GitHub app and encrypted secret configured; real login, owner session and authenticated D1 health passed on 2026-11-03. Physical phone check requested; live logout/expiry remain pending.
 - Gate: authenticated paths cannot be bypassed; API/auth never receives SPA HTML fallback; no card or paid activation required. Pin compatible Wrangler/runtime dependencies only after official compatibility checks. If prerequisites fail, report the exact gap while continuing independent local work.
 
 ### CF-M2 — Protected backend and complete data contract
 
 - **T2 (CF-01,04,07)**: implement identity verification, account mapping, profile ownership, session/logout behavior and request validation. Test forged/missing/expired/wrong-audience tokens, alternate URLs and simulated second account. Expected: only owned data accessible. State: Planned.
-- **T3 (CF-02,04,14)**: inventory schemas, classify synced/local/derived data, implement versioned D1 schema and bounded atomic API operations, attachment chunks and isolated local migrations. Test rollback, invalid references, payload sizes, ownership and retry receipts. Expected: stable contract covering every existing data type. State: Planned.
+- **T3 (CF-02,04,14)**: inventory schemas ([initial inventory](CLOUD_DATA_INVENTORY.md)), classify synced/local/derived data, implement versioned D1 schema and bounded atomic API operations, attachment chunks and isolated local migrations. Test rollback, invalid references, payload sizes, ownership and retry receipts. Expected: stable contract covering every existing data type. State: Planned.
 - Gate: actual D1 runtime integration tests prove concurrent compare-and-set, atomicity and idempotency; mocks alone are insufficient.
 
 ### CF-M3 — Offline synchronization engine
