@@ -77,6 +77,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,woff2,svg,png,webp,json}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html',
+        // Authentication and API responses must never become cached SPA documents.
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/cdn-cgi\//, /^\/auth(?:\/|$)/],
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {

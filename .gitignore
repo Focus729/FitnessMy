@@ -10,3 +10,8 @@ playwright-report/
 .env.*
 !.env.example
 *.tsbuildinfo
+.wrangler/
+.dev.vars
+.dev.vars.*
+wrangler.local.jsonc
+worker-configuration.d.ts

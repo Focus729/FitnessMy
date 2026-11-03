@@ -6,7 +6,7 @@ module.exports = {
   parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } },
   plugins: ['@typescript-eslint', 'react-hooks'],
   extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
-  ignorePatterns: ['dist', 'dev-dist', 'node_modules', 'coverage', 'scripts', '*.cjs', '*.js'],
+  ignorePatterns: ['dist', 'dev-dist', 'node_modules', 'coverage', '.wrangler', 'scripts', '*.cjs', '*.js'],
   rules: {
     'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': 'warn',

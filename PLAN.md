@@ -1,6 +1,21 @@
-# Lenta redesign implementation plan
+# FitnessMy implementation plan
 
 ## Current State
+
+- Objective: move application hosting from GitHub Pages to Cloudflare and provide one private account with the same profile/history on phone and PC while preserving offline logging.
+- Approval scope: on 2026-11-02 Pavel approved the complete Cloudflare plan and subsequently approved replacing Access email OTP with GitHub OAuth for Focus729 only. Workers Static Assets + D1, offline sync, no payment card/no paid services, and staged Pages retirement remain approved. OAuth app/secret creation and transfer only to Cloudflare Worker secrets were explicitly authorized.
+- Active milestone: CF-M0 complete; CF-M1 in progress; CF-M2–CF-M7 pending. Full tasks and acceptance matrix: [Cloudflare migration plan](docs/CLOUDFLARE_MIGRATION_PLAN.md).
+- Next action: finish staging OAuth secret configuration, publish the checked CF-M1 prototype and verify live login/logout/D1 before completing the synchronization increments.
+- Blockers: Cloudflare Access was excluded because its onboarding requires payment details. Pavel restored the in-app Cloudflare session on 2026-11-03; use only the Codex in-app browser, not Vivaldi. Local workerd crashes in Windows; runtime checks will use isolated remote staging. Do not change system settings or grant broad extra scopes automatically.
+- Checks/evidence: Wrangler 4.156.1 installed with existing dependency versions preserved. All 215 existing unit tests passed. Replacement GitHub OAuth module passed 12 SQLite-backed tests, backend TypeScript and targeted lint. A memory-bounded root PWA build passed. Remote staging D1 SELECT 1 passed. RU/EN offline auth/API boundary checks passed (RU isolated rerun after an environment OOM). Current Worker dry-run passed. Staging identity migration 0001 applied successfully. Historical 14 Access tests are superseded, not current OAuth evidence.
+- Release state: GitHub Pages remains active. Dashboard confirms Workers Free/no payment method; existing workers.dev subdomain is hpavel729. Created fitnessmy-staging D1 with identity tables; no personal profile data uploaded. No Worker publication, personal-data migration or Pages shutdown performed. Preserve previous release evidence below.
+- Remaining scope: CF-01–CF-14 and retained SYNC-01–SYNC-08 are mapped in the new plan. Historical physical-device/live-service verification gaps remain; affected PWA/install checks become explicit migration gates.
+
+## Historical discovery — superseded by the Cloudflare plan
+
+The discovery brief is [docs/BRIEF.md](docs/BRIEF.md). Cloudflare has replaced the earlier Supabase recommendation; the current audience is Pavel alone. The completed redesign's synchronization exclusion remains historical and is superseded only when this new implementation plan is approved.
+
+## Previous release state — completed direction B redesign
 
 - Objective: implement the Training companion direction B across Lenta, improve daily logging, and resolve all 24 audit requirements without losing existing data or features.
 - Baseline: local `master`, commit `6ec0ff0a514ceabcc6e71250d6c4c403e0d415e7`, version 0.7.0; origin `https://github.com/Focus729/FitnessMy.git`.

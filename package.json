@@ -12,6 +12,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:backend": "vitest run --config vitest.backend.config.ts",
+    "check:backend": "tsc -p tsconfig.backend.json",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
     "seed:exercises": "node scripts/build-exercises.mjs",
@@ -56,6 +58,7 @@
     "typescript": "^5.6.2",
     "vite": "^5.4.8",
     "vite-plugin-pwa": "^0.20.5",
-    "vitest": "^2.1.2"
+    "vitest": "^2.1.2",
+    "wrangler": "4.156.1"
   }
 }
