@@ -178,6 +178,7 @@ export async function githubAuth(
         signal: AbortSignal.timeout(10000),
       },
     );
+    providerStage = `exchange_http_${tokenResponse.status}_parse`;
     const token = (await tokenResponse.json()) as {
       access_token?: string;
       token_type?: string;
@@ -210,7 +211,8 @@ export async function githubAuth(
     // Provider credentials never enter D1, logs, browser cookies or profile backups.
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    throw new HttpError(503, `github_${providerStage}_unavailable`);
+    const kind = error instanceof Error && ['TypeError', 'SyntaxError', 'TimeoutError', 'AbortError'].includes(error.name) ? error.name.toLowerCase() : 'error';
+    throw new HttpError(503, `github_${providerStage}_${kind}`);
   }
   if (
     typeof user.id !== 'number' ||
