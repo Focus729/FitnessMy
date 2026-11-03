@@ -78,7 +78,7 @@ export async function sessionIdentity(
 export async function githubAuth(
   request: Request,
   config: GithubConfig,
-  transport: typeof fetch = fetch,
+  transport: typeof fetch = (input, init) => fetch(input, init),
   now = Math.floor(Date.now() / 1000),
 ): Promise<Response> {
   configured(config);
@@ -173,7 +173,7 @@ export async function githubAuth(
           code,
           code_verifier: saved.verifier,
           redirect_uri: callback,
-        }),
+        }).toString(),
         redirect: 'error',
         signal: AbortSignal.timeout(10000),
       },
