@@ -174,7 +174,8 @@ export async function githubAuth(
           code_verifier: saved.verifier,
           redirect_uri: callback,
         }).toString(),
-        redirect: 'error',
+        // Workers supports manual/follow only. Never forward credentials on redirects.
+        redirect: 'manual',
         signal: AbortSignal.timeout(10000),
       },
     );
@@ -203,7 +204,7 @@ export async function githubAuth(
         Accept: 'application/vnd.github+json',
         'User-Agent': 'FitnessMy',
       },
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) throw new HttpError(503, 'github_identity_rejected');

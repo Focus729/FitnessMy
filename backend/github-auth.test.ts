@@ -257,6 +257,23 @@ describe('single-owner GitHub authentication', () => {
     ).rejects.toMatchObject({ status: 503 });
     expect(sqlite.prepare('SELECT * FROM sessions').all()).toHaveLength(0);
   });
+  it.each(['exchange', 'identity'])('rejects %s redirects without forwarding credentials', async (stage) => {
+    const { state, cookie } = await begin();
+    const normal = provider();
+    const transport = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      // Match the deployed runtime constraint, rather than Node's broader Fetch support.
+      expect(init?.redirect).toBe('manual');
+      const exchange = String(input).includes('access_token');
+      if ((stage === 'exchange') === exchange)
+        return new Response(null, { status: 302, headers: { Location: 'https://untrusted.example' } });
+      return normal(input);
+    });
+    await expect(githubAuth(new Request(url(`/auth/callback?code=x&state=${state}`), {
+      headers: { Cookie: cookie },
+    }), config, transport, now)).rejects.toMatchObject({ status: 503 });
+    expect(transport).toHaveBeenCalledTimes(stage === 'exchange' ? 1 : 2);
+    expect(sqlite.prepare('SELECT * FROM sessions').all()).toHaveLength(0);
+  });
   it('bounds unauthenticated login attempts', async () => {
     for (let i = 0; i < 10; i++) await begin();
     await expect(begin()).rejects.toMatchObject({ status: 429 });
