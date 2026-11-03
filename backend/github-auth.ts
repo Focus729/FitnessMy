@@ -156,6 +156,7 @@ export async function githubAuth(
   if (!code || code.length > 512)
     throw new HttpError(400, 'invalid_login_code');
   let user: { id?: unknown };
+  let providerStage = 'exchange';
   try {
     const tokenResponse = await transport(
       'https://github.com/login/oauth/access_token',
@@ -163,6 +164,7 @@ export async function githubAuth(
         method: 'POST',
         headers: {
           Accept: 'application/json',
+          'User-Agent': 'FitnessMy',
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
@@ -180,14 +182,20 @@ export async function githubAuth(
       access_token?: string;
       token_type?: string;
       scope?: string;
+      error?: string;
     };
+    if (token.error) {
+      const knownErrors = ['incorrect_client_credentials', 'bad_verification_code', 'redirect_uri_mismatch', 'incorrect_code_verifier'];
+      throw new HttpError(503, knownErrors.includes(token.error) ? `github_${token.error}` : 'github_exchange_rejected');
+    }
     if (
       !tokenResponse.ok ||
       !token.access_token ||
       token.token_type?.toLowerCase() !== 'bearer' ||
       token.scope?.trim()
     )
-      throw new Error('Identity exchange failed');
+      throw new HttpError(503, token.scope?.trim() ? 'github_unexpected_scope' : 'github_invalid_token_response');
+    providerStage = 'identity';
     const response = await transport('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${token.access_token}`,
@@ -197,11 +205,12 @@ export async function githubAuth(
       redirect: 'error',
       signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok) throw new Error('Identity lookup failed');
+    if (!response.ok) throw new HttpError(503, 'github_identity_rejected');
     user = (await response.json()) as { id?: unknown };
     // Provider credentials never enter D1, logs, browser cookies or profile backups.
-  } catch {
-    throw new HttpError(503, 'github_temporarily_unavailable');
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(503, `github_${providerStage}_unavailable`);
   }
   if (
     typeof user.id !== 'number' ||
