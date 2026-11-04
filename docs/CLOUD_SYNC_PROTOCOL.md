@@ -64,3 +64,11 @@ Internal `profileStorageUsage` reads one SQL snapshot with ownership predicates 
 Evidence: all 86 backend tests, backend types and affected lint passed. Staging D1 proved the profile logical total equals the change in the database budget counter, original attachment bytes match the fixture, finalized/unfinished totals agree and foreign access fails. Synthetic fixtures were cleaned and the prior budget restored.
 
 Operator measurement via `npx wrangler d1 info fitnessmy-staging --json` on 2026-11-04 reported database_size=245760 bytes, rows_read_24h=1659 and rows_written_24h=909. This was sampled during synthetic integration activity; it is not a steady-state personal-use estimate. Physical size includes storage not represented by logical reservations, and may retain allocated pages after deletion. Provider-reported rolling activity is distinct from billing-day/account-wide quotas. Automatic operational reporting, warning thresholds and pre-migration sizing remain pending.
+
+## Progress reconciliation foundation — 2026-11-04
+
+`reconcileXpEvents` merges validated event histories by dedupeKey rather than adding device totals. Matching awards count once; conflicting amount/reason/date or reused IDs raise ProgressConflict. Event deletion does not revoke earned XP, consistent with the existing no-penalty rule. Total/level are recomputed, numeric overflow rejected, and returned events copied. `legacyXpGap` reports a stored total not explained by the event ledger; migration must retain the original snapshot and require explicit reconciliation instead of silently losing XP or inventing duplicate awards.
+
+Existing achievements merge monotonically. Inspection confirmed freezes and current streaks are derived by `src/app/streaks.ts`; device balances must not be summed. Full-history recomputation still needs work: the existing function scans a 400-day window and uses device-local today. Migration must preserve historical bests and unknown streak keys, and define a common evaluation date before enabling cloud progress. The new XP helper is not wired to server writes or hydration yet. This does not complete the progress contract.
+
+Evidence: 20 gamification tests passed (including four new reconciliation tests); app types and affected lint passed. No UI, user-history mutation or Worker deployment in this increment.
