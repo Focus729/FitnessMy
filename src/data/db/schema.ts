@@ -6,6 +6,7 @@
  * репозитории (правило 2.9, проверяется ESLint).
  */
 import Dexie, { type Table } from 'dexie';
+import { CLOUD_STORES, installCloudOutbox, type CloudLink, type CloudVersion, type OutboxEntry } from '../cloud/outbox';
 
 /** Kept outside profile replacement transactions and ordinary exports. */
 class RecoveryDB extends Dexie {
@@ -47,6 +48,9 @@ import type {
 } from '@/domain/model';
 
 export class LentaDB extends Dexie {
+  cloudState!: Table<CloudLink, string>;
+  cloudOutbox!: Table<OutboxEntry, number>;
+  cloudVersions!: Table<CloudVersion, [string, string]>;
   profile!: Table<Profile, string>;
   settings!: Table<Settings, string>;
   foods!: Table<Food, string>;
@@ -140,6 +144,8 @@ export class LentaDB extends Dexie {
             log.outcome ??= log.completed ? 'success' : undefined;
           });
       });
+    this.version(3).stores(CLOUD_STORES);
+    installCloudOutbox(this);
   }
 }
 

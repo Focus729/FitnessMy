@@ -40,3 +40,11 @@ Rechecked official [D1 batch transaction semantics](https://developers.cloudflar
 4. Wire authenticated bounded API routes with same-origin checks, consistent errors and no sensitive logging. Keep the storage primitives internal until the preceding gates pass.
 5. Add atomic Dexie outbox/cursor/conflict persistence across repository mutations, undo, imports and reset; explicitly suppress seed/remote hydration enqueueing.
 6. Implement profile linking, trusted-device and logout/pending-write flows, migration preview, both-device tests and personal cutover before retiring Pages.
+
+## Local outbox foundation — 2026-11-04
+
+IndexedDB schema v3 adds cloudState, cloudOutbox and cloudVersions, excluded from ordinary exports. Existing profiles remain unlinked. A DBCore middleware captures linked runtime mutations in the same native transaction as their records. Stable operation IDs, transaction grouping, per-record predecessor chains and original base revisions survive reopening. Repeated mutations within one transaction coalesce; physical deletion retains the previous payload (including Blob bytes). Queue-write failure aborts local changes.
+
+Credential/preference projection runs before capture. Explicit hydration/seed suppression belongs to one native transaction only. Seed loading now commits both catalogs and its version marker atomically and rechecks initialization under the write lock. The transaction callback must remain async for Dexie to retain its promise scope; a non-async wrapper caused PrematureCommitError in both unit tests and native Chrome and was corrected.
+
+This is local persistence only. No sender, acknowledgement, cursor/conflict application or profile-linking UI is enabled. Captured gameState is an internal snapshot, not an accepted wire payload. Native Chrome checks cover atomic record/Blob persistence across reload and concurrent catalog initialization without seed enqueueing. Run `npx playwright test --config playwright.storage.config.ts`; the isolated dev-server tests do not add fixture hooks to production assets.

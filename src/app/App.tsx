@@ -64,13 +64,13 @@ function ProfileScope({ profileId }: { profileId: string }) {
   // Встроенные наборы грузятся после первого рендера — они не блокируют запуск.
   useEffect(() => {
     let cancelled = false;
-    void loadSeedData(repos).then(() => {
+    void loadSeedData(repos, profileId).then(() => {
       if (!cancelled) setSeeded(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [repos]);
+  }, [repos, profileId]);
 
   useEffect(() => {
     applyTheme(settings.theme, getProfileRef(profileId)?.tint ?? 'a');

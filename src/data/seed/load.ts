@@ -7,6 +7,8 @@
 import type { Exercise, Food, Nutrients, Serving } from '@/domain/model';
 import type { Repositories } from '@/data/repositories/types';
 import { nowIso } from '@/lib/date';
+import { openDb } from '@/data/db/schema';
+import { withoutCloudCapture } from '@/data/cloud/outbox';
 
 const SEED_VERSION_KEY = 'seedVersion';
 const SEED_VERSION = 1;
@@ -44,7 +46,10 @@ export async function isSeeded(repos: Repositories): Promise<boolean> {
   return (await repos.meta.get<number>(SEED_VERSION_KEY)) === SEED_VERSION;
 }
 
-export async function loadSeedData(repos: Repositories): Promise<{ foods: number; exercises: number }> {
+export async function loadSeedData(
+  repos: Repositories,
+  profileId: string,
+): Promise<{ foods: number; exercises: number }> {
   if (await isSeeded(repos)) return { foods: 0, exercises: 0 };
 
   const ts = nowIso();
@@ -73,9 +78,16 @@ export async function loadSeedData(repos: Repositories): Promise<{ foods: number
     updatedAt: ts,
   }));
 
-  await repos.foods.bulkPut(foods);
-  await repos.exercises.bulkPut(exercises);
-  await repos.meta.set(SEED_VERSION_KEY, SEED_VERSION);
-
-  return { foods: foods.length, exercises: exercises.length };
+  return withoutCloudCapture(
+    openDb(profileId),
+    ['foods', 'exercises', 'meta'],
+    async () => {
+      // Recheck under the write lock: another tab may have completed initialization.
+      if (await isSeeded(repos)) return { foods: 0, exercises: 0 };
+      await repos.foods.bulkPut(foods);
+      await repos.exercises.bulkPut(exercises);
+      await repos.meta.set(SEED_VERSION_KEY, SEED_VERSION);
+      return { foods: foods.length, exercises: exercises.length };
+    },
+  );
 }

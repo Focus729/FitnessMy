@@ -16,7 +16,8 @@ const DB_NAME = 'lenta_migration_test';
 const V1_STORES = {
   profile: 'id',
   settings: 'id',
-  foods: 'id, name, searchKey, barcode, source, isFavorite, useCount, lastUsedAt',
+  foods:
+    'id, name, searchKey, barcode, source, isFavorite, useCount, lastUsedAt',
   dishes: 'id, name, isFavorite, useCount',
   recipes: 'id, name',
   diary: 'id, date, [date+mealSlotId], refId, createdAt',
@@ -26,10 +27,12 @@ const V1_STORES = {
   mealPlans: 'id, weekStart',
   shoppingLists: 'id, mealPlanId',
   dayTemplates: 'id, name',
-  exercises: 'id, name, searchKey, category, equipment, isFavorite, *primaryMuscles',
+  exercises:
+    'id, name, searchKey, category, equipment, isFavorite, *primaryMuscles',
   routines: 'id, name, source',
   workouts: 'id, date, routineId, startedAt, finishedAt',
-  workoutSets: 'id, workoutId, exerciseId, [exerciseId+order], [workoutId+order]',
+  workoutSets:
+    'id, workoutId, exerciseId, [exerciseId+order], [workoutId+order]',
   cardio: 'id, date, kind',
   body: 'id, date',
   sleep: 'id, date',
@@ -74,14 +77,28 @@ async function seedV1(): Promise<void> {
   });
 
   await db.table('habitLogs').bulkPut([
-    { id: 'l1', habitId: 'h1', date: '2026-07-01', completed: true, createdAt: TS, updatedAt: TS },
-    { id: 'l2', habitId: 'h1', date: '2026-07-02', completed: false, createdAt: TS, updatedAt: TS },
+    {
+      id: 'l1',
+      habitId: 'h1',
+      date: '2026-07-01',
+      completed: true,
+      createdAt: TS,
+      updatedAt: TS,
+    },
+    {
+      id: 'l2',
+      habitId: 'h1',
+      date: '2026-07-02',
+      completed: false,
+      createdAt: TS,
+      updatedAt: TS,
+    },
   ]);
 
   db.close();
 }
 
-describe('миграция схемы v1 → v2', () => {
+describe('database schema upgrades to v3', () => {
   beforeEach(async () => {
     await Dexie.delete(DB_NAME);
   });
@@ -92,7 +109,7 @@ describe('миграция схемы v1 → v2', () => {
     const db = new LentaDB(DB_NAME);
     await db.open();
 
-    expect(db.verno).toBe(2);
+    expect(db.verno).toBe(3);
 
     const workout = await db.workouts.get('w1');
     expect(workout?.name).toBe('Старая тренировка');
@@ -144,11 +161,54 @@ describe('миграция схемы v1 → v2', () => {
     await Dexie.delete(DB_NAME);
   });
 
-  it('чистая база сразу открывается на версии 2', async () => {
+  it('opens a fresh database at version 3', async () => {
     const db = new LentaDB(`${DB_NAME}_fresh`);
     await db.open();
-    expect(db.verno).toBe(2);
+    expect(db.verno).toBe(3);
     db.close();
     await Dexie.delete(`${DB_NAME}_fresh`);
+  });
+
+  it('preserves v2 records without implicitly linking or uploading them', async () => {
+    const previous = new Dexie(DB_NAME);
+    previous.version(2).stores({
+      ...V1_STORES,
+      workouts: 'id, date, routineId, startedAt, finishedAt, deletedAt',
+      plannedWorkouts:
+        'id, plannedDate, status, routineId, [status+plannedDate]',
+    });
+    const record = {
+      id: 'water-old',
+      date: '2026-07-01',
+      time: '10:00',
+      ml: 250,
+      createdAt: TS,
+      updatedAt: TS,
+    };
+    await previous.table('water').put(record);
+    previous.close();
+    const db = new LentaDB(DB_NAME);
+    try {
+      await db.open();
+      expect(db.verno).toBe(3);
+      expect(await db.water.get(record.id)).toEqual(record);
+      expect(await db.cloudState.count()).toBe(0);
+      expect(await db.cloudOutbox.count()).toBe(0);
+      await db.cloudState.put({
+        key: 'link',
+        accountId: 'fixture',
+        profileId: 'fixture-profile',
+        locked: false,
+      });
+      await db.water.update(record.id, { ml: 500 });
+      expect(await db.cloudOutbox.toArray()).toEqual([
+        expect.objectContaining({
+          entityId: record.id,
+          value: { ...record, ml: 500 },
+        }),
+      ]);
+    } finally {
+      db.close();
+    }
   });
 });
