@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { consumeSyncRequest } from '../backend/sync-rate-limit';
+import { profileStorageUsage } from '../backend/storage-usage';
 import {
   beginAttachment,
   CHUNK_BYTES,
@@ -273,6 +274,22 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
     )
       .bind(owner, 'write', 120, 59)
       .run();
+    const usage = await profileStorageUsage(db, owner, 'profile');
+    expect(usage.records).toBeGreaterThan(0);
+    expect(usage.changes).toBeGreaterThanOrEqual(usage.records);
+    expect(usage.attachments).toBe(1);
+    expect(usage.unfinishedAttachments).toBe(0);
+    expect(usage.attachmentOriginalBytes).toBe(bytes.length);
+    expect(usage.attachmentReservedBytes).toBeGreaterThan(bytes.length);
+    const currentBudget = await prepare(
+      'SELECT used_bytes FROM sync_budget WHERE id=1',
+    ).first<{ used_bytes: number }>();
+    expect(usage.syncLogicalBytes).toBe(
+      currentBudget!.used_bytes - initialBudget!.used_bytes,
+    );
+    await expect(
+      profileStorageUsage(db, `${owner}:foreign`, 'profile'),
+    ).rejects.toMatchObject({ status: 404 });
     const admission = await Promise.allSettled([
       consumeSyncRequest(db, owner, 'write', 121),
       consumeSyncRequest(db, owner, 'write', 121),

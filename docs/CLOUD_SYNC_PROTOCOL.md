@@ -56,3 +56,11 @@ Migration 0007 adds one bounded rate-counter row per authenticated account and o
 These limits are burst control, not proof of daily free-quota compliance: physical usage reporting and operational limits remain required. This module is not yet wired into HTTP. Four additional SQLite-backed tests cover concurrent admission, account/operation isolation, rollover, clock regression and fail-closed behavior; all 83 backend tests passed, as did backend types and affected lint. Migration 0007 is applied only to staging.
 
 Staging D1 integration passed the concurrent final-slot admission, denial and next-window reset alongside the existing sync/reference/attachment suite. The random synthetic owner and its rate rows were removed; logical sync usage returned to the initial value.
+
+## Owned storage usage — 2026-11-04
+
+Internal `profileStorageUsage` reads one SQL snapshot with ownership predicates on every aggregate: current records, retained changes, receipts, sync logical bytes, attachment count, unfinished uploads, original bytes and reserved bytes. Missing/foreign profiles return 404; database failures return a sanitized 503. It does not expose payloads or global other-owner totals. This remains internal until authenticated usage/API routes are wired; aggregate scans must be rate-limited and not polled on every edit.
+
+Evidence: all 86 backend tests, backend types and affected lint passed. Staging D1 proved the profile logical total equals the change in the database budget counter, original attachment bytes match the fixture, finalized/unfinished totals agree and foreign access fails. Synthetic fixtures were cleaned and the prior budget restored.
+
+Operator measurement via `npx wrangler d1 info fitnessmy-staging --json` on 2026-11-04 reported database_size=245760 bytes, rows_read_24h=1659 and rows_written_24h=909. This was sampled during synthetic integration activity; it is not a steady-state personal-use estimate. Physical size includes storage not represented by logical reservations, and may retain allocated pages after deletion. Provider-reported rolling activity is distinct from billing-day/account-wide quotas. Automatic operational reporting, warning thresholds and pre-migration sizing remain pending.
