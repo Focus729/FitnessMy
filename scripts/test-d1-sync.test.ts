@@ -2,6 +2,7 @@ import { it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { consumeSyncRequest } from '../backend/sync-rate-limit';
 import {
   beginAttachment,
   CHUNK_BYTES,
@@ -267,10 +268,30 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
     await expect(
       pullSyncChanges(db, `${owner}:foreign`, 'profile'),
     ).rejects.toMatchObject({ status: 404 });
+    await prepare(
+      'INSERT INTO sync_rate_limits(account_id,operation,window_start,requests) VALUES(?,?,?,?)',
+    )
+      .bind(owner, 'write', 120, 59)
+      .run();
+    const admission = await Promise.allSettled([
+      consumeSyncRequest(db, owner, 'write', 121),
+      consumeSyncRequest(db, owner, 'write', 121),
+    ]);
+    expect(
+      admission.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      admission.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+    await expect(
+      consumeSyncRequest(db, owner, 'write', 122),
+    ).rejects.toMatchObject({ status: 429, retryAfter: 58 });
+    await consumeSyncRequest(db, owner, 'write', 180);
   } finally {
     // Only this run's random synthetic owner; preserve all personal and other test records.
     for (const table of [
       'sync_changes',
+      'sync_rate_limits',
       'sync_entities',
       'sync_receipts',
       'attachment_chunks',

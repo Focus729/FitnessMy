@@ -17,6 +17,7 @@ export function testDatabase() {
     '0004_attachments.sql',
     '0005_sync_budget.sql',
     '0006_attachment_restart.sql',
+    '0007_sync_rate_limits.sql',
   ])
     sql.exec(
       readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'),
