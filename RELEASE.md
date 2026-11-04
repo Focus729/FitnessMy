@@ -54,3 +54,9 @@ The previous deployed artifact abbcc35e2c19b7abc9840b8368760268a8b1edfd remains 
 Source `a7327675e07b79c1c835fa1fc4daf7a5e82608ac`, Worker version `2ff116ed-1a14-42db-9008-2d896918ca88`; live build-info matches. The deployed frontend fixes transactional XP awards and monotonic achievement merging. Cloud storage/reference/attachment modules remain internal, with no automatic upload or sync HTTP routes enabled. Additive migrations 0004–0006 are applied to staging only. Original Pages production and personal data remain unchanged.
 
 Gate: 222 app tests, 79 backend tests, backend/app types, affected lint, exact-source root PWA build, real staging D1 storage/reference/attachment/restart/cleanup proof, and five local browser scenarios passed. The same five scenarios passed against the deployed site using isolated disposable local browser profiles: workout completion/XP agreement/reload plus RU/EN account mocks and offline API/auth boundary. Independent anonymous session/profile requests returned 401. No paid service or new dependency was activated.
+
+## Staging outbox foundation — 2026-11-04
+
+Published source `6eb34d5b680d780bad6fe83000478efcbe5f1529`, Worker `5613143b-852e-4331-9fd1-fd54878bbbd9`. Exact-source root PWA build passed. Live build marker matches and anonymous protected endpoints return 401. Seven deployed workout/backup and RU/EN account/auth-cache scenarios passed in disposable contexts; account state tests use mocked API responses. Local evidence: 235 app tests, app types, affected lint and two native IndexedDB storage tests passed. No automatic profile linking or HTTP synchronization is enabled. Pages and personal histories remain unchanged.
+
+Schema v3 is additive but older Dexie code declares version 2: do not roll frontend assets back blindly after a browser has upgraded. Prefer a forward fix retaining schema v3 and disabling capture. Database deletion is not a rollback procedure.
