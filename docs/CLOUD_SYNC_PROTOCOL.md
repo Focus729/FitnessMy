@@ -72,3 +72,9 @@ Operator measurement via `npx wrangler d1 info fitnessmy-staging --json` on 2026
 Existing achievements merge monotonically. Inspection confirmed freezes and current streaks are derived by `src/app/streaks.ts`; device balances must not be summed. Full-history recomputation still needs work: the existing function scans a 400-day window and uses device-local today. Migration must preserve historical bests and unknown streak keys, and define a common evaluation date before enabling cloud progress. The new XP helper is not wired to server writes or hydration yet. This does not complete the progress contract.
 
 Evidence: 20 gamification tests passed (including four new reconciliation tests); app types and affected lint passed. No UI, user-history mutation or Worker deployment in this increment.
+
+## Streak derivation correction — 2026-11-04
+
+`recomputeStreaks(repos, asOf)` now accepts a shared evaluation date and scans available history instead of truncating at 400 days. Habit schedules do not precede habit creation. Food/workout entries after asOf are excluded. Workout weeks use Monday calendar dates, avoiding incorrect splitting across ISO week-year boundaries. Existing bests and unknown streak keys are retained; current streaks and freeze balances are recomputed, not summed across devices.
+
+Three new regression tests cover a 450-day run, historical-best/unknown-key preservation, December/January week grouping, future workout exclusion and explicit-date evaluation. All 36 targeted habit/streak tests, app types and affected lint passed. Archive/schedule history is still limited by the existing data model, which stores current habit definitions rather than historical schedule revisions. Cloud progress wiring and atomic hydration/recomputation remain pending.
