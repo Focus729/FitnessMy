@@ -14,18 +14,28 @@ Status: internal implementation, 2026-11-04. No sync HTTP route or automatic upl
 
 The change sequence is global in this staging database and strictly ordered, while all queries and ownership constraints are profile-scoped. Gaps caused by other profiles are expected and must not be interpreted as missing records.
 
+## References, attachments and storage budgets
+
+Added on 2026-11-04; internal storage functions remain disconnected from HTTP/UI.
+
+- Entity references resolve only inside the same owner/profile, the incoming atomic batch, or the generated built-in food/exercise ID manifest. Tombstoned parents remain available for historical references. Missing/foreign parents and unfinished attachments reject the batch before its receipt is created. The reference preflight relies on retained identities: physical deletion/compaction must not be added without revisiting the transaction guards.
+- `scripts/build-cloud-catalog.mjs` generates `backend/catalog-ids.json`. A regression test compares it with the full asset catalogs, so catalog changes require regenerating the manifest. Catalog record override projection remains pending.
+- Attachments preserve their original IDs/MIME/creation instants/length/SHA-256. Maximum file size is 16 MiB, split into 64 KiB base64 chunks. Manifest/chunk retries are idempotent; altered content for an existing ID is a conflict. Status lists uploaded chunk indexes for resume. Finalization requires every chunk and a matching whole-file hash. Reads and recipe references require finalization and matching ownership. Originals must remain local on any failure. An explicit restart clears only an unfinished upload at the expected upload revision; stale restart/finalization attempts cannot erase or publish newer chunks. Finalized files cannot be reset. The created_at column stores the original file creation instant, not upload time; do not use it for future upload-expiry cleanup. Garbage collection/cancel is not enabled.
+- Attachment reservations include encoded bytes and overhead, capped globally at 128 MiB. Incomplete uploads retain their reservations. Sync records/change history/receipts have a separate 96 MiB logical budget, updated transactionally by SQL triggers with UTF-8 byte lengths and metadata allowances. Quota rejection rolls back all writes, while existing retry receipts remain usable. These conservative application budgets are not an exact measurement of physical D1 storage; operational usage monitoring and rate limits remain required.
+- Migrations 0004_attachments.sql, 0005_sync_budget.sql and 0006_attachment_restart.sql are applied to staging only. No personal data was uploaded and no new paid service was enabled.
+
 ## Verification
 
-`npm run test:backend`: 61 tests, including 29 shared-schema and 11 transactional storage tests, passed on 2026-11-04. Backend/app type checks and affected lint passed. Existing application behavior is not yet connected to these new modules.
+`npm run test:backend`: 79 tests, including 29 shared-schema, 13 transactional storage, 9 attachment and 7 reference tests, passed on 2026-11-04. Backend types and affected lint passed; the earlier app type check remains recorded for the unchanged frontend. Existing application behavior is not yet connected to these new modules.
 
-`npx vitest run --config vitest.d1.config.ts`: explicit remote test, excluded from normal unit runs. Uses the existing local Wrangler session without printing credentials, targets only the fixed fitnessmy-staging database, creates a random synthetic owner and removes only that owner's rows in finally. Passed real concurrent compare-and-set, batch rollback, stable retry receipt, owner denial, change pagination and snapshot/edit interleaving. Migration 0003 is additive and applied to staging; no personal records were inserted.
+`npx vitest run --config vitest.d1.config.ts`: explicit remote test, excluded from normal unit runs. Uses the existing local Wrangler session without printing credentials, targets only the fixed fitnessmy-staging database, creates a random synthetic owner and removes only that owner's rows in finally. Passed real concurrent compare-and-set, batch rollback, stable retry receipt, owner denial, change pagination and snapshot/edit interleaving. Extended proof also passed out-of-order attachment resume, hash finalization, retry/readback, unfinished/foreign attachment denial, guarded restart/completed-file protection and recipe publication after finalization. Cleanup returned the logical storage counter to its initial value. Migrations 0003–0006 are additive and applied to staging; no personal records were inserted.
 
 Rechecked official [D1 batch transaction semantics](https://developers.cloudflare.com/d1/worker-api/d1-database/) and [REST batch query input](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/) on 2026-11-04. The integration test exercises the real D1 database through its administrative REST batch transport using the same SQL/storage functions. Worker-binding transport and authenticated HTTP integration still need verification after endpoint wiring.
 
 ## Required before HTTP activation
 
-1. Validate same-profile references and attachment finalization, including references within a related batch and built-in catalog IDs. Generic shape validation alone does not establish referential integrity.
-2. Add resumable owned attachment chunks, length/digest checks and conservative storage/rate quotas. The current row and request bounds are not a complete free-storage budget.
+1. Connect guarded upload resume/restart to the client and inventory actual attachment sizes; keep any over-limit originals available for a reviewed migration decision. Finalized attachment cancellation/deletion remains disabled.
+2. Add rate limits and physical storage/usage reporting. Logical application budgets do not constitute full operational quota monitoring.
 3. Implement derived workout totals, complete XP/achievement/freeze merge behavior and catalog override projection. Strict rejection of gameState is temporary, not removal from the approved scope.
 4. Wire authenticated bounded API routes with same-origin checks, consistent errors and no sensitive logging. Keep the storage primitives internal until the preceding gates pass.
 5. Add atomic Dexie outbox/cursor/conflict persistence across repository mutations, undo, imports and reset; explicitly suppress seed/remote hydration enqueueing.

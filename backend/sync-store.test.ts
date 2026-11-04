@@ -17,6 +17,8 @@ beforeEach(() => {
     '0001_identity.sql',
     '0002_profiles.sql',
     '0003_sync.sql',
+    '0004_attachments.sql',
+    '0005_sync_budget.sql',
   ])
     sql.exec(
       readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'),
@@ -87,6 +89,45 @@ const count = (table: string) =>
   (sql.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 
 describe('transactional sync storage', () => {
+  it('rolls back a quota failure without charging a receipt and permits earlier retries at the limit', async () => {
+    const original = batch('first', water('w1'));
+    const receipt = await push(original);
+    // A receipt fits, but its following entity/change writes do not.
+    sql.exec('UPDATE sync_budget SET used_bytes=100658296');
+    await expect(push(batch('no-room', water('w2')))).rejects.toMatchObject({
+      status: 413,
+      code: 'sync_storage_quota',
+    });
+    expect(await push(original)).toEqual(receipt);
+    expect(count('sync_receipts')).toBe(1);
+    expect(count('sync_entities')).toBe(1);
+    expect(
+      sql.prepare('SELECT used_bytes FROM sync_budget').get(),
+    ).toMatchObject({ used_bytes: 100658296 });
+  });
+  it('accounts for UTF-8 payloads, updates and fixture cleanup exactly', async () => {
+    await push(batch('first', water('вода')));
+    await push(batch('edit', water('вода', 1, 1000)));
+    const expected = (
+      sql
+        .prepare(
+          `SELECT
+      (SELECT SUM(length(CAST(payload AS BLOB))+1024) FROM sync_entities) +
+      (SELECT SUM(length(CAST(payload AS BLOB))+1024) FROM sync_changes) +
+      (SELECT COUNT(*)*4096 FROM sync_receipts) AS n`,
+        )
+        .get() as { n: number }
+    ).n;
+    expect(
+      sql.prepare('SELECT used_bytes FROM sync_budget').get(),
+    ).toMatchObject({ used_bytes: expected });
+    sql.exec(
+      'DELETE FROM sync_changes; DELETE FROM sync_entities; DELETE FROM sync_receipts',
+    );
+    expect(
+      sql.prepare('SELECT used_bytes FROM sync_budget').get(),
+    ).toMatchObject({ used_bytes: 0 });
+  });
   it('bounds page bytes and resumes without skipping large records', async () => {
     for (let i = 0; i < 8; i++) {
       const payload = {

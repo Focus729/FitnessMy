@@ -44,6 +44,7 @@ import type {
   XpEvent,
 } from '@/domain/model';
 import { defaultSettings } from '@/data/defaults';
+import { mergeAchievements } from '@/domain/gamification/progress';
 import type {
   BlobRepo,
   BodyRepo,
@@ -781,34 +782,40 @@ function makeGameRepo(db: LentaDB): GameRepo {
       return (await db.gameState.get('singleton')) ?? blank();
     },
     async update(patch) {
-      const current = await this.get();
-      const next: GameState = {
-        ...current,
-        ...patch,
-        id: 'singleton',
-        updatedAt: nowIso(),
-      };
-      next.level = levelForXp(next.xp);
-      await db.gameState.put(next);
-      return next;
+      return db.transaction('rw', db.gameState, async () => {
+        const current = await this.get();
+        const next: GameState = {
+          ...current,
+          ...patch,
+          streaks: { ...current.streaks, ...patch.streaks },
+          unlockedAchievements: mergeAchievements(current.unlockedAchievements, patch.unlockedAchievements ?? []),
+          id: 'singleton',
+          updatedAt: nowIso(),
+        };
+        next.level = levelForXp(next.xp);
+        await db.gameState.put(next);
+        return next;
+      });
     },
     async awardXp({ reason, amount, date, dedupeKey }) {
-      const existing = await db.xpEvents.where('dedupeKey').equals(dedupeKey).first();
-      if (existing) return false;
-      const ts = nowIso();
-      const event: XpEvent = {
-        id: uuid(),
-        date,
-        reason,
-        amount,
-        dedupeKey,
-        createdAt: ts,
-        updatedAt: ts,
-      };
-      await db.xpEvents.put(event);
-      const state = await this.get();
-      await this.update({ xp: state.xp + amount });
-      return true;
+      return db.transaction('rw', db.xpEvents, db.gameState, async () => {
+        const existing = await db.xpEvents.where('dedupeKey').equals(dedupeKey).first();
+        if (existing) return false;
+        const ts = nowIso();
+        const event: XpEvent = {
+          id: uuid(),
+          date,
+          reason,
+          amount,
+          dedupeKey,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        await db.xpEvents.put(event);
+        const state = await this.get();
+        await this.update({ xp: state.xp + amount });
+        return true;
+      });
     },
     async events(limit = 50) {
       const rows = await db.xpEvents.toArray();

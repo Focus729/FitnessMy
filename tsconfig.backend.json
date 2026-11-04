@@ -4,10 +4,16 @@
     "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["backend/**/*.ts", "vitest.backend.config.ts", "vitest.d1.config.ts", "scripts/test-d1-sync.test.ts"]
+  "include": [
+    "backend/**/*.ts",
+    "vitest.backend.config.ts",
+    "vitest.d1.config.ts",
+    "scripts/test-d1-sync.test.ts"
+  ]
 }

@@ -2,6 +2,16 @@ import { it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import {
+  beginAttachment,
+  CHUNK_BYTES,
+  digestBytes,
+  finalizeAttachment,
+  putAttachmentChunk,
+  readAttachmentChunk,
+  restartAttachment,
+} from '../backend/attachments';
+import catalog from '../backend/catalog-ids.json';
 import type { Database, SqlStatement, SqlResult } from '../backend/db';
 import {
   commitSyncBatch,
@@ -54,6 +64,8 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
         result.errors?.map((entry) => entry.message).join(' ') ?? '';
       if (messages.includes('sync_revision_conflict'))
         throw new Error('sync_revision_conflict');
+      if (messages.includes('sync_storage_quota'))
+        throw new Error('sync_storage_quota');
       if (messages.includes('UNIQUE constraint failed'))
         throw new Error('UNIQUE constraint failed');
       throw new Error(`Staging D1 request failed: HTTP ${response.status}`);
@@ -100,6 +112,9 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
   });
   const push = (input: SyncBatch) =>
     commitSyncBatch(db, owner, 'profile', input);
+  const initialBudget = await prepare(
+    'SELECT used_bytes FROM sync_budget WHERE id=1',
+  ).first<{ used_bytes: number }>();
   const count = async (table: string) =>
     (await prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE account_id=?`)
       .bind(owner)
@@ -179,6 +194,76 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
     expect(afterSnapshot.changes.map((change) => change.payload.ml)).toEqual([
       750,
     ]);
+    const bytes = Uint8Array.from(
+      { length: CHUNK_BYTES + 17 },
+      (_, i) => i % 251,
+    );
+    const manifest = {
+      createdAt: stamp,
+      id: 'photo1',
+      mime: 'image/png',
+      byteLength: bytes.length,
+      digest: await digestBytes(bytes),
+    };
+    await beginAttachment(db, owner, 'profile', manifest);
+    const recipe = batch({
+      operationId: randomUUID(),
+      type: 'recipes',
+      id: 'recipe1',
+      expectedRevision: 0,
+      payload: {
+        id: 'recipe1',
+        createdAt: stamp,
+        updatedAt: stamp,
+        name: 'Fixture',
+        components: [{ foodId: catalog.foods[0], grams: 100 }],
+        yieldGrams: 100,
+        servings: 1,
+        photoBlobId: 'photo1',
+        isFavorite: false,
+        useCount: 0,
+      },
+    });
+    await expect(push(recipe)).rejects.toMatchObject({
+      code: 'entity_reference_unavailable',
+    });
+    const last = Buffer.from(bytes.slice(CHUNK_BYTES)).toString('base64');
+    await putAttachmentChunk(db, owner, 'profile', 'photo1', 1, last);
+    expect(
+      (await beginAttachment(db, owner, 'profile', manifest)).uploaded,
+    ).toEqual([1]);
+    await expect(
+      finalizeAttachment(db, owner, 'profile', 'photo1'),
+    ).rejects.toMatchObject({ code: 'attachment_incomplete' });
+    expect(
+      (await restartAttachment(db, owner, 'profile', 'photo1', 0)).uploaded,
+    ).toEqual([]);
+    await putAttachmentChunk(db, owner, 'profile', 'photo1', 1, last);
+    await expect(
+      restartAttachment(db, owner, 'profile', 'photo1', 0),
+    ).rejects.toMatchObject({ code: 'attachment_upload_changed' });
+    await putAttachmentChunk(
+      db,
+      owner,
+      'profile',
+      'photo1',
+      0,
+      Buffer.from(bytes.slice(0, CHUNK_BYTES)).toString('base64'),
+    );
+    expect(
+      (await finalizeAttachment(db, owner, 'profile', 'photo1')).finalized,
+    ).toBe(true);
+    await expect(
+      restartAttachment(db, owner, 'profile', 'photo1', 1),
+    ).rejects.toMatchObject({ code: 'attachment_finalized' });
+    await putAttachmentChunk(db, owner, 'profile', 'photo1', 1, last);
+    expect(
+      (await readAttachmentChunk(db, owner, 'profile', 'photo1', 1)).data,
+    ).toBe(last);
+    expect(await push(recipe)).toHaveLength(1);
+    await expect(
+      readAttachmentChunk(db, `${owner}:foreign`, 'profile', 'photo1', 1),
+    ).rejects.toMatchObject({ status: 404 });
     await expect(
       pullSyncChanges(db, `${owner}:foreign`, 'profile'),
     ).rejects.toMatchObject({ status: 404 });
@@ -188,6 +273,8 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
       'sync_changes',
       'sync_entities',
       'sync_receipts',
+      'attachment_chunks',
+      'attachments',
       'profiles',
     ])
       await prepare(`DELETE FROM ${table} WHERE account_id=?`)
@@ -195,5 +282,8 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
         .run();
     await prepare('DELETE FROM accounts WHERE id=?').bind(owner).run();
     expect(await count('sync_changes')).toBe(0);
+    expect(
+      await prepare('SELECT used_bytes FROM sync_budget WHERE id=1').first(),
+    ).toEqual(initialBudget);
   }
 });

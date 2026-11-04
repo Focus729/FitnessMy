@@ -1,5 +1,6 @@
 import type { Database } from './db';
 import { HttpError } from './http';
+import { validateReferences } from './references';
 import {
   validateCloudMutation,
   type CloudMutation,
@@ -140,6 +141,9 @@ export async function commitSyncBatch(
     hash,
   );
   if (previous) return previous;
+  // Referenced entity IDs and finalized blobs are retained and immutable in identity.
+  // If physical deletion/compaction is added, move these guards into that transaction contract.
+  await validateReferences(db, account, profile, batch.mutations);
   const token = crypto.randomUUID();
   const statements = [
     db
@@ -178,6 +182,8 @@ export async function commitSyncBatch(
   } catch (error) {
     // Only static categories escape. Never return SQL, bound values or provider diagnostics.
     const message = error instanceof Error ? error.message : '';
+    if (message.includes('sync_storage_quota'))
+      throw new HttpError(413, 'sync_storage_quota');
     if (message.includes('sync_revision_conflict'))
       throw new HttpError(409, 'sync_revision_conflict');
     if (message.includes('UNIQUE constraint failed'))
