@@ -1,6 +1,8 @@
 import type { LentaDB } from '../db/schema';
 import { withoutCloudCapture } from './outbox';
 import { validateCloudEntity, CLOUD_ENTITY_TYPES } from './schema';
+import { defaultSettings } from '../defaults';
+import type { BlobRecord } from '../../domain/model';
 
 export interface RemoteChange {
   sequence: number;
@@ -24,8 +26,12 @@ export async function receivePage(
   profileId: string,
   expectedCursor: number,
   page: RemotePage,
+  files: BlobRecord[] = [],
 ): Promise<void> {
   if (
+    !Array.isArray(page.changes) ||
+    page.changes.length > 100 ||
+    typeof page.done !== 'boolean' ||
     ![expectedCursor, page.cursor, page.watermark].every(
       (n) => Number.isSafeInteger(n) && n >= 0,
     ) ||
@@ -49,6 +55,7 @@ export async function receivePage(
     last = change.sequence;
   }
   const stores = [
+    'blobs',
     ...CLOUD_ENTITY_TYPES,
     'cloudState',
     'cloudOutbox',
@@ -70,6 +77,25 @@ export async function receivePage(
     const checkpoint = await state.get('pull');
     if ((checkpoint?.cursor ?? 0) !== expectedCursor)
       throw new Error('sync_cursor_changed');
+    for (const file of files) {
+      if (
+        !(file.data instanceof Blob) ||
+        !page.changes.some(
+          (change) =>
+            change.type === 'recipes' && change.payload.photoBlobId === file.id,
+        )
+      )
+        throw new Error('unexpected_sync_attachment');
+      if (!(await db.blobs.get(file.id))) await db.blobs.put(file);
+    }
+    for (const change of page.changes) {
+      if (
+        change.type === 'recipes' &&
+        typeof change.payload.photoBlobId === 'string' &&
+        !(await db.blobs.get(change.payload.photoBlobId))
+      )
+        throw new Error('sync_attachment_missing');
+    }
     for (const change of page.changes) {
       const key: [string, string] = [change.type, change.id];
       const version = await db.cloudVersions.get(key);
@@ -106,7 +132,9 @@ export async function receivePage(
         let value = structuredClone(change.payload);
         // Preserve excluded device-local settings and PIN while applying shared fields.
         if (change.type === 'settings' || change.type === 'profile') {
-          const local = await db.table(change.type).get(change.id);
+          const local =
+            (await db.table(change.type).get(change.id)) ??
+            (change.type === 'settings' ? defaultSettings() : undefined);
           const keys =
             change.type === 'settings'
               ? ['ai', 'sync', 'locale', 'theme', 'restTimer', 'onboardingDone']

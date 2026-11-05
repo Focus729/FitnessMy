@@ -5,6 +5,15 @@ import { testDatabase } from './test-database';
 import { LentaDB } from '../src/data/db/schema';
 import { syncOnce, type SyncTransport } from '../src/data/cloud/sync-once';
 import { commitSyncBatch, pullSyncChanges } from './sync-store';
+import { resolveConflict } from '../src/data/cloud/resolve';
+import type { FileTransport } from '../src/data/cloud/attachments';
+import {
+  beginAttachment,
+  putAttachmentChunk,
+  finalizeAttachment,
+  attachmentStatus,
+  readAttachmentChunk,
+} from './attachments';
 
 let fixture: ReturnType<typeof testDatabase>;
 let phone: LentaDB;
@@ -45,6 +54,43 @@ const water = (id: string, ml = 250) => ({
   createdAt: '2026-11-05T10:00:00.000Z',
   updatedAt: '2026-11-05T10:00:00.000Z',
 });
+it('publishes a recipe only after its attachment and hydrates both on the other device', async () => {
+  const files: FileTransport = {
+    begin: (input) => beginAttachment(fixture.db, 'a', 'p', input),
+    put: (id, index, data) =>
+      putAttachmentChunk(fixture.db, 'a', 'p', id, index, data),
+    finalize: (id) => finalizeAttachment(fixture.db, 'a', 'p', id),
+    status: (id) => attachmentStatus(fixture.db, 'a', 'p', id),
+    read: (id, index) => readAttachmentChunk(fixture.db, 'a', 'p', id, index),
+  };
+  const stamp = '2026-11-05T10:00:00.000Z';
+  await phone.transaction('rw', phone.blobs, phone.recipes, async () => {
+    await phone.blobs.put({
+      id: 'photo',
+      mime: 'image/png',
+      createdAt: stamp,
+      data: new Blob(['photo bytes']),
+    });
+    await phone.recipes.put({
+      id: 'recipe',
+      name: 'Fixture',
+      components: [],
+      yieldGrams: 100,
+      servings: 1,
+      photoBlobId: 'photo',
+      isFavorite: false,
+      useCount: 0,
+      createdAt: stamp,
+      updatedAt: stamp,
+    });
+  });
+  await syncOnce(phone, 'a', 'p', transport, files);
+  await syncOnce(pc, 'a', 'p', transport, files);
+  expect((await pc.recipes.get('recipe'))!.photoBlobId).toBe('photo');
+  expect(await (await pc.blobs.get('photo'))!.data.text()).toBe('photo bytes');
+  expect(await pc.cloudOutbox.count()).toBe(0);
+  expect(await phone.cloudOutbox.count()).toBe(0);
+});
 it('retains both versions after concurrent edits and pulls the conflict despite push rejection', async () => {
   await phone.water.put(water('w'));
   await syncOnce(phone, 'a', 'p', transport);
@@ -52,10 +98,29 @@ it('retains both versions after concurrent edits and pulls the conflict despite 
   await phone.water.update('w', { ml: 400 });
   await pc.water.update('w', { ml: 600 });
   await syncOnce(phone, 'a', 'p', transport);
-  await expect(syncOnce(pc, 'a', 'p', transport)).rejects.toMatchObject({ status: 409 });
+  await expect(syncOnce(pc, 'a', 'p', transport)).rejects.toMatchObject({
+    status: 409,
+  });
   expect((await pc.water.get('w'))!.ml).toBe(600);
-  expect((await pc.cloudVersions.get(['water', 'w']))!.conflict!.payload.ml).toBe(400);
+  expect(
+    (await pc.cloudVersions.get(['water', 'w']))!.conflict!.payload.ml,
+  ).toBe(400);
   expect(await pc.cloudOutbox.count()).toBe(1);
+  const version = (await pc.cloudVersions.get(['water', 'w']))!;
+  await resolveConflict(
+    pc,
+    'a',
+    'p',
+    'water',
+    'w',
+    version.conflict!.revision,
+    version.localHead,
+    'local',
+  );
+  await syncOnce(pc, 'a', 'p', transport);
+  await syncOnce(phone, 'a', 'p', transport);
+  expect((await phone.water.get('w'))!.ml).toBe(600);
+  expect(await pc.cloudOutbox.count()).toBe(0);
 });
 it('converges two independent local databases through the real SQL protocol', async () => {
   await phone.water.put(water('w'));
@@ -67,6 +132,20 @@ it('converges two independent local databases through the real SQL protocol', as
   await syncOnce(phone, 'a', 'p', transport);
   expect((await phone.water.get('w'))!.ml).toBe(500);
   expect(await phone.cloudOutbox.count()).toBe(0);
+});
+it('keeps a related transaction above twenty records atomic and paginates it to the other device', async () => {
+  await phone.transaction('rw', phone.water, async () => {
+    await phone.water.bulkPut(
+      Array.from({ length: 40 }, (_, index) => water(`water-${index}`)),
+    );
+  });
+  await syncOnce(phone, 'a', 'p', transport);
+  await syncOnce(pc, 'a', 'p', transport);
+  expect(await pc.water.count()).toBe(40);
+  expect(await phone.cloudOutbox.count()).toBe(0);
+  expect(
+    fixture.sql.prepare('SELECT count(*) AS count FROM sync_receipts').get(),
+  ).toMatchObject({ count: 1 });
 });
 it('replays a committed request after its response is lost without duplicating data', async () => {
   await phone.water.put(water('w'));

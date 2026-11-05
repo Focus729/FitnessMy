@@ -1,4 +1,5 @@
 import type { LentaDB } from '../db/schema';
+import { MAX_BATCH_MUTATIONS, MAX_BATCH_BYTES } from './limits';
 import { validateCloudMutation, type CloudMutation } from './schema';
 
 export interface PreparedBatch {
@@ -45,7 +46,8 @@ export async function prepareNextBatch(
         .equals(first.transactionId)
         .sortBy('sequence');
       // Never split a related transaction silently. Import/workout planners must respect this bound.
-      if (entries.length > 20) throw new Error('sync_transaction_too_large');
+      if (entries.length > MAX_BATCH_MUTATIONS)
+        throw new Error('sync_transaction_too_large');
       const mutations: CloudMutation[] = [];
       for (const entry of entries) {
         if (entry.accountId !== accountId || entry.profileId !== profileId)
@@ -84,7 +86,7 @@ export async function prepareNextBatch(
       };
       if (
         new TextEncoder().encode(JSON.stringify(prepared.body)).length >
-        256 * 1024
+        MAX_BATCH_BYTES
       )
         throw new Error('sync_transaction_too_large');
       await state.put(prepared);

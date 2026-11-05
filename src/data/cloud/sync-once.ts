@@ -2,6 +2,9 @@ import type { LentaDB } from '../db/schema';
 import { prepareNextBatch, type PreparedBatch } from './prepare';
 import { completePreparedBatch } from './complete';
 import { receivePage, type RemotePage, type RemoteChange } from './receive';
+import { downloadAttachment, type FileTransport } from './attachments';
+import { uploadFirstTransactionFiles } from './file-queue';
+import type { BlobRecord } from '../../domain/model';
 
 export interface SyncTransport {
   push(
@@ -16,8 +19,11 @@ export async function syncOnce(
   accountId: string,
   profileId: string,
   transport: SyncTransport,
+  fileTransport?: FileTransport,
 ): Promise<void> {
   let pushError: unknown;
+  if (fileTransport)
+    await uploadFirstTransactionFiles(db, accountId, profileId, fileTransport);
   const prepared = await prepareNextBatch(db, accountId, profileId);
   if (prepared) {
     try {
@@ -47,6 +53,24 @@ export async function syncOnce(
       )
         throw error;
       pushError = error;
+      if ('code' in error && error.code === 'sync_revision_conflict') {
+        await db.transaction('rw', db.cloudState, async () => {
+          const state = db.table('cloudState');
+          const current = await state.get('push');
+          const link = await db.cloudState.get('link');
+          if (
+            current?.body.batchId !== prepared.body.batchId ||
+            link?.accountId !== accountId ||
+            link?.profileId !== profileId ||
+            link.locked
+          )
+            throw new Error('cloud_workspace_changed');
+          await state.put({
+            key: 'rejectedPush',
+            batchId: prepared.body.batchId,
+          });
+        });
+      }
     }
   }
   for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
@@ -65,7 +89,18 @@ export async function syncOnce(
       throw new Error('sync_watermark_changed');
     if (!page.done && page.cursor <= cursor)
       throw new Error('sync_cursor_not_advancing');
-    await receivePage(db, accountId, profileId, cursor, page);
+    const files: BlobRecord[] = [];
+    for (const id of new Set(
+      page.changes
+        .filter((change) => change.type === 'recipes')
+        .map((change) => change.payload.photoBlobId)
+        .filter((id): id is string => typeof id === 'string'),
+    )) {
+      if (await db.blobs.get(id)) continue;
+      if (!fileTransport) throw new Error('sync_attachment_missing');
+      files.push(await downloadAttachment(id, fileTransport));
+    }
+    await receivePage(db, accountId, profileId, cursor, page, files);
     if (page.done) {
       if (pushError) throw pushError;
       return;

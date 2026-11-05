@@ -76,7 +76,13 @@ export async function syncApi(
         'Retry-After': String(error.retryAfter),
       });
     if (error instanceof HttpError)
-      return json({ error: error.code }, error.status);
+      return json(
+        { error: error.code },
+        error.status,
+        error.code === 'sync_revision_conflict'
+          ? { 'X-Sync-Error': 'sync_revision_conflict' }
+          : {},
+      );
     return json({ error: 'sync_temporarily_unavailable' }, 503);
   }
 }

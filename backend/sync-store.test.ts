@@ -334,7 +334,7 @@ describe('transactional sync storage', () => {
     await expect(push(batch('empty'))).rejects.toMatchObject({ status: 400 });
     await expect(
       push(
-        batch('large', ...Array.from({ length: 21 }, (_, i) => water(`w${i}`))),
+        batch('large', ...Array.from({ length: 201 }, (_, i) => water(`w${i}`))),
       ),
     ).rejects.toMatchObject({ status: 400 });
     await expect(

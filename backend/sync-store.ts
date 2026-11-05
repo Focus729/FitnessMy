@@ -1,6 +1,7 @@
 import type { Database } from './db';
 import { HttpError } from './http';
 import { validateReferences } from './references';
+import { MAX_BATCH_MUTATIONS, MAX_BATCH_BYTES } from '../src/data/cloud/limits';
 import {
   validateCloudMutation,
   type CloudMutation,
@@ -59,7 +60,7 @@ export function validateSyncBatch(value: unknown): asserts value is SyncBatch {
     !identifier(batch.batchId) ||
     !Array.isArray(batch.mutations) ||
     batch.mutations.length < 1 ||
-    batch.mutations.length > 20
+    batch.mutations.length > MAX_BATCH_MUTATIONS
   )
     throw new HttpError(400, 'invalid_sync_batch');
   const operations = new Set<string>();
@@ -76,7 +77,7 @@ export function validateSyncBatch(value: unknown): asserts value is SyncBatch {
     operations.add(mutation.operationId);
     entities.add(key);
   }
-  if (new TextEncoder().encode(canonical(batch)).length > 256 * 1024)
+  if (new TextEncoder().encode(canonical(batch)).length > MAX_BATCH_BYTES)
     throw new HttpError(413, 'sync_batch_too_large');
 }
 async function owned(db: Database, account: string, profile: string) {

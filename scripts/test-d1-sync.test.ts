@@ -274,6 +274,24 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
     )
       .bind(owner, 'write', 120, 59)
       .run();
+    const large = batch(
+      ...Array.from({ length: 200 }, (_, index) => mutation(`bulk-${index}`)),
+    );
+    const largeReceipt = await push(large);
+    expect(largeReceipt).toHaveLength(200);
+    expect(await push(large)).toEqual(largeReceipt);
+    const beforeLargeFailure = await count('sync_changes');
+    await expect(
+      push(
+        batch(
+          ...Array.from({ length: 199 }, (_, index) =>
+            mutation(`rollback-${index}`),
+          ),
+          mutation('bulk-0', 0),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'sync_revision_conflict' });
+    expect(await count('sync_changes')).toBe(beforeLargeFailure);
     const usage = await profileStorageUsage(db, owner, 'profile');
     expect(usage.records).toBeGreaterThan(0);
     expect(usage.changes).toBeGreaterThanOrEqual(usage.records);

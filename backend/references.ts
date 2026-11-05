@@ -1,7 +1,7 @@
 import type { Database } from './db';
 import { HttpError } from './http';
 import type { CloudMutation } from '../src/data/cloud/schema';
-import catalog from './catalog-ids.json';
+import catalog from './catalog-ids.json' with { type: 'json' };
 
 const foods = new Set(catalog.foods);
 const exercises = new Set(catalog.exercises);
