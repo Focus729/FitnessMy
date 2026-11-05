@@ -24,6 +24,8 @@ export interface CloudVersion {
   localHead?: string;
   acknowledgedOperationId?: string;
   acknowledgedRevision?: number;
+  remoteSequence?: number;
+  conflict?: { revision: number; payload: Record<string, unknown>; operationId: string };
 }
 export interface OutboxEntry {
   sequence?: number;

@@ -60,3 +60,7 @@ Gate: 222 app tests, 79 backend tests, backend/app types, affected lint, exact-s
 Published source `6eb34d5b680d780bad6fe83000478efcbe5f1529`, Worker `5613143b-852e-4331-9fd1-fd54878bbbd9`. Exact-source root PWA build passed. Live build marker matches and anonymous protected endpoints return 401. Seven deployed workout/backup and RU/EN account/auth-cache scenarios passed in disposable contexts; account state tests use mocked API responses. Local evidence: 235 app tests, app types, affected lint and two native IndexedDB storage tests passed. No automatic profile linking or HTTP synchronization is enabled. Pages and personal histories remain unchanged.
 
 Schema v3 is additive but older Dexie code declares version 2: do not roll frontend assets back blindly after a browser has upgraded. Prefer a forward fix retaining schema v3 and disabling capture. Database deletion is not a rollback procedure.
+
+## Staging streak correction — 2026-11-05 verification record
+
+Source d476b579ea06670f76708c982966526f79e3b901, Worker 752320d7-5011-4390-a627-dea89f3c1f83. Exact-source root PWA build, seven local and seven deployed workout/backup/RU-EN account/auth-cache scenarios passed. Live marker matches and anonymous protected requests return 401. Account-state scenarios use mocks; personal data was not linked. New catalog/acknowledgement/receive modules are subsequent local work, not part of this deployment.
