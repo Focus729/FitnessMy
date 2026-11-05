@@ -118,3 +118,13 @@ Rechecked https://developers.cloudflare.com/d1/platform/limits/ on 2026-11-05: a
 `previewCloudMigration` is a read-only backup inventory: format/reference validation, per-table/tombstone/built-in counts, strict cloud projection checks, decoded attachment sizes/SHA-256/reservations, missing-photo detection and explicit legacy XP-gap warnings. It returns only summary metadata and a stable sanitized-content fingerprint; credential/device-preference changes do not affect that fingerprint. It never writes storage or sends requests. A conservative sync reservation estimate assumes one receipt per projected record; a capacity-review warning is not a claim that optimally packed data cannot fit. Actual seed overrides/import batches and current account usage must be reconciled before upload.
 
 Three tests passed for counts/hash/size, input preservation, credential exclusion/fingerprint stability and malformed file reporting. This is not yet the migration UI or an import executor. Pavel confirmed the only real history is on the phone; its backup and original installation must remain available through cutover.
+
+## Legacy XP baseline and atomic derived progress — 2026-11-05
+
+`createProgressBaseline` captures the unexplained portion of legacy XP once per source profile during reviewed migration. `reconcileCloudProgress` counts each source baseline once, rejects differing amounts for the same source, adds deduplicated event XP, derives level, unions achievements and preserves historical bests/unknown streak keys. Current freezes/series come from supplied history-derived values rather than adding device balances. Nested progress fields are allowlisted to avoid copying unknown values.
+
+Streak calculation is now a pure shared function in domain/habits/history.ts, with the existing local refresh delegating to it. Optional receive-page evaluation runs progress derivation inside the same suppressed transaction as records/files/cursor, only when explicit migration baseline metadata exists; it never infers a new baseline from a device total. Tests prove legacy 100 + old event 30 + independent new awards 20/40 = 190, duplicate baseline idempotency, mismatched-source conflict, best preservation and full rollback on conflicting baseline metadata.
+
+Wire progress envelopes, baseline distribution/approval during migration, automatic duplicate-XP wire identity reconciliation and common evaluation-date selection are not connected yet. This does not enable gameState uploads or claim full progress synchronization.
+
+Post-refactor verification: all 273 app tests passed; app/backend types and affected lint passed. Deployment remains the previously verified d476b57 staging revision.

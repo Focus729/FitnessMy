@@ -4,6 +4,80 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { LentaDB } from '../db/schema';
 import { receivePage } from './receive';
 let db: LentaDB;
+it('derives XP and level in the same transaction without echoing game state', async () => {
+  await db
+    .table('cloudState')
+    .put({
+      key: 'progress',
+      baselines: [
+        {
+          sourceProfileId: 'phone',
+          legacyXp: 100,
+          achievements: [],
+          streaks: {},
+        },
+      ],
+    });
+  const payload = {
+    id: 'xp',
+    date: '2026-11-05',
+    reason: 'workoutFinished',
+    amount: 30,
+    dedupeKey: 'workout:1',
+    createdAt: '2026-11-05T10:00:00.000Z',
+    updatedAt: '2026-11-05T10:00:00.000Z',
+  };
+  await receivePage(
+    db,
+    'a',
+    'p',
+    0,
+    {
+      changes: [
+        {
+          sequence: 1,
+          revision: 1,
+          operationId: 'remote',
+          type: 'xpEvents',
+          id: 'xp',
+          payload,
+        },
+      ],
+      cursor: 1,
+      watermark: 1,
+      done: true,
+    },
+    [],
+    '2026-11-05',
+  );
+  expect((await db.gameState.get('singleton'))!.xp).toBe(130);
+  expect(await db.cloudOutbox.count()).toBe(0);
+  expect(await db.table('cloudState').get('pull')).toMatchObject({ cursor: 1 });
+});
+it('rolls back rows and cursor when legacy progress metadata conflicts', async () => {
+  await db.table('cloudState').put({
+    key: 'progress',
+    baselines: [
+      {
+        sourceProfileId: 'phone',
+        legacyXp: 100,
+        achievements: [],
+        streaks: {},
+      },
+      {
+        sourceProfileId: 'phone',
+        legacyXp: 200,
+        achievements: [],
+        streaks: {},
+      },
+    ],
+  });
+  await expect(
+    receivePage(db, 'a', 'p', 0, page(), [], '2026-11-05'),
+  ).rejects.toThrow('progress_baseline_conflict');
+  expect(await db.water.count()).toBe(0);
+  expect(await db.table('cloudState').get('pull')).toBeUndefined();
+});
 it('rolls back applied data when persisting the cursor fails', async () => {
   db.close();
   db = new LentaDB('receive-fixture');

@@ -3,6 +3,7 @@ import { withoutCloudCapture } from './outbox';
 import { validateCloudEntity, CLOUD_ENTITY_TYPES } from './schema';
 import { defaultSettings } from '../defaults';
 import type { BlobRecord } from '../../domain/model';
+import { deriveHydratedProgress } from './derive-progress';
 
 export interface RemoteChange {
   sequence: number;
@@ -27,6 +28,7 @@ export async function receivePage(
   expectedCursor: number,
   page: RemotePage,
   files: BlobRecord[] = [],
+  evaluationDate?: string,
 ): Promise<void> {
   if (
     !Array.isArray(page.changes) ||
@@ -56,6 +58,7 @@ export async function receivePage(
   }
   const stores = [
     'blobs',
+    'gameState',
     ...CLOUD_ENTITY_TYPES,
     'cloudState',
     'cloudOutbox',
@@ -153,6 +156,8 @@ export async function receivePage(
         remoteSequence: change.sequence,
       });
     }
+    if (evaluationDate !== undefined)
+      await deriveHydratedProgress(db, evaluationDate);
     await state.put({
       key: 'pull',
       cursor: page.cursor,
