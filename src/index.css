@@ -104,6 +104,9 @@
 .app-shell {
   max-width: 740px;
 }
+.cloud-status {
+  max-width: 740px;
+}
 .app-nav {
   max-width: 740px;
 }
@@ -122,6 +125,10 @@ select {
   max-width: 100%;
 }
 @media (min-width: 1024px) {
+  .cloud-status {
+    max-width: 1400px;
+    padding-inline: 248px 32px;
+  }
   .app-shell {
     max-width: 1400px;
     padding-left: 216px;

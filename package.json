@@ -16,12 +16,14 @@
     "check:backend": "tsc -p tsconfig.backend.json",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "e2e:storage": "playwright test --config playwright.storage.config.ts",
     "seed:exercises": "node scripts/build-exercises.mjs",
     "seed:images": "node scripts/fetch-exercise-images.mjs",
     "fonts": "node scripts/fetch-fonts.mjs",
     "check:spec": "node scripts/check-spec.mjs",
     "check:contrast": "node scripts/check-contrast.mjs",
-    "check:release": "node scripts/verify-release.mjs"
+    "check:release": "node scripts/verify-release.mjs",
+    "check:release:cloud": "node scripts/verify-release.mjs --cloud"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",

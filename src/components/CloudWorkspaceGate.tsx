@@ -10,6 +10,7 @@ import {
 } from '@/data/cloud/workspace';
 import { SyncRequestError } from '@/data/cloud/transport';
 import { useSession } from '@/app/store';
+import { CloudConflicts } from './CloudConflicts';
 
 type Status =
   | 'connecting'
@@ -154,8 +155,19 @@ export function CloudWorkspaceGate({
     );
   return (
     <>
-      <aside className="mx-auto flex max-w-screen-lg items-center justify-between gap-2 px-4 py-1 text-caption text-muted">
+      <aside className="cloud-status mx-auto flex items-center justify-between gap-2 px-4 py-1 text-caption text-muted">
         <span role="status">{t(`cloud.${status}`)}</span>
+        {status === 'syncConflict' && (
+          <CloudConflicts
+            id={id}
+            accountId={accountId}
+            profileId={profileId}
+            onResolved={() => {
+              setStatus('syncPending');
+              setAttempt((value) => value + 1);
+            }}
+          />
+        )}
         {status === 'syncError' && (
           <Button onClick={() => setAttempt((value) => value + 1)}>
             {t('cloud.retry')}

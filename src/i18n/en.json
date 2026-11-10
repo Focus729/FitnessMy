@@ -28,7 +28,34 @@
     "localRestoreOnly": "You can restore a backup into a separate local profile.",
     "storageBody": "Entries in this profile are saved in your browser and synced through Cloudflare. Sign in with the same GitHub account to open them on another device.",
     "storageRisk": "Offline changes stay on this device until sync completes. Wait for the Synced status before clearing your browser data.",
-    "aboutBody": "Lenta is a personal journal with GitHub sign-in for cloud profiles."
+    "aboutBody": "Lenta is a personal journal with GitHub sign-in for cloud profiles.",
+    "reviewConflicts": "Compare versions",
+    "conflictChanged": "Could not apply your choice. Review the updated versions and try again.",
+    "noConflictChoices": "Your changes are saved. This record does not have a version choice yet.",
+    "record": "Entry",
+    "localVersion": "On this device",
+    "remoteVersion": "In the cloud",
+    "deletedVersion": "Deleted",
+    "keepLocal": "Keep mine",
+    "keepRemote": "Use cloud version",
+    "mergeProgressHint": "Achievements from both versions are kept and XP is recalculated.",
+    "mergeProgress": "Merge progress",
+    "recordTypes": {
+      "profile": "Profile", "settings": "Settings", "foods": "Food", "dishes": "Dish",
+      "recipes": "Recipe", "diary": "Food log", "water": "Water", "fasting": "Fasting",
+      "substances": "Caffeine or alcohol", "mealPlans": "Meal plan", "shoppingLists": "Shopping list",
+      "dayTemplates": "Day template", "exercises": "Exercise", "routines": "Routine",
+      "workouts": "Workout", "workoutSets": "Set", "cardio": "Cardio",
+      "plannedWorkouts": "Planned workout", "body": "Measurements", "sleep": "Sleep",
+      "checkins": "Check-in", "habits": "Habit", "habitLogs": "Habit entry",
+      "xpEvents": "Award", "gameState": "Progress"
+    },
+    "recordFields": {
+      "ml": "Amount, ml", "time": "Time", "date": "Date", "name": "Name", "note": "Note",
+      "notes": "Notes", "weightKg": "Weight, kg", "reps": "Reps", "grams": "Weight, g",
+      "isFavorite": "Favorite", "completed": "Completed", "isCompleted": "Completed",
+      "amount": "Amount", "quality": "Quality", "durationMin": "Duration, min"
+    }
   },
   "common": {
     "appName": "Lenta",

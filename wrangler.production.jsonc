@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fitnessmy",
+  "main": "backend/index.ts",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "preview_urls": false,
+  "send_metrics": false,
+  "vars": {
+    "APP_ORIGIN": "https://fitnessmy.hpavel729.workers.dev",
+    "ALLOWED_GITHUB_ID": "43194562"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fitnessmy",
+      "database_id": "60ac762c-7f69-4d78-80fd-c22b9670efdd",
+      "migrations_dir": "backend/migrations"
+    }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api", "/api/*", "/auth", "/auth/*"]
+  },
+  "observability": { "enabled": false }
+}
