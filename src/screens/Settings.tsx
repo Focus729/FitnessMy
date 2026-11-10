@@ -10,6 +10,7 @@ import { useQuery } from '@/data/repositories/hooks';
 import { useProfile, useSettings, useUpdateSettings } from '@/app/hooks';
 import { useSession } from '@/app/store';
 import { destroyProfile, getProfileRef, setPin } from '@/data/profiles';
+import { CloudDeviceAccess } from '@/components/CloudDeviceAccess';
 import {
   applyImport,
   BackupFormatError,
@@ -461,6 +462,7 @@ function DataSection() {
     <Section title={t('settings.sections.data')}>
       <p className="text-body text-muted">{t(ref?.cloud ? 'cloud.storageBody' : 'settings.dataWhatBody')}</p>
       <p className="text-caption text-muted">{t(ref?.cloud ? 'cloud.storageRisk' : 'settings.deviceStorageHint')}</p>
+      {ref?.cloud && <CloudDeviceAccess id={ref.id} {...ref.cloud} />}
       {dataError ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       {recovery ? (
         <Button onClick={() => downloadBackup(recovery, `${recovery.profile.name}-recovery`)}>

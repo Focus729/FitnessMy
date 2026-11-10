@@ -7,7 +7,10 @@ export async function bootstrap(page: Page, profileName = 'Тест'): Promise<v
   // Экран выбора профиля
   await page.getByPlaceholder('Имя профиля').fill(profileName);
   await page.getByRole('button', { name: 'Новый профиль' }).click();
+  await completeOnboarding(page);
+}
 
+export async function completeOnboarding(page: Page): Promise<void> {
   // 1 — язык
   await page.getByRole('button', { name: 'Далее' }).click();
   // 2 — профиль

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/design-system/primitives';
 import { CloudProfiles } from './CloudProfiles';
-import { CLOUD_LOGOUT_EVENT } from '@/data/cloud/workspace';
+import { logoutCloudAccount } from '@/data/cloud/device-access';
+import { useSession } from '@/app/store';
 
 type AccountState = 'loading' | 'signedIn' | 'signedOut' | 'unavailable';
 
@@ -11,15 +12,18 @@ export function CloudAccount() {
   const [state, setState] = useState<AccountState>('loading');
   const [attempt, setAttempt] = useState(0);
   const [leaving, setLeaving] = useState(false);
-  const [logoutError, setLogoutError] = useState(false);
+  const [logoutError, setLogoutError] = useState<'logoutError' | 'logoutPending'>();
   const [profileBusy, setProfileBusy] = useState(false);
   const [syncAccount, setSyncAccount] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const refresh = useSession((value) => value.refresh);
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     let alive = true;
     setState('loading');
     setSyncAccount(null);
+    setAccountId(null);
     void fetch('/api/session', {
       cache: 'no-store',
       credentials: 'same-origin',
@@ -30,6 +34,8 @@ export function CloudAccount() {
         if (!response.ok) throw new Error();
         const data = (await response.json()) as { authenticated?: boolean };
         if (data.authenticated !== true) throw new Error();
+        if (alive && 'accountId' in data && typeof data.accountId === 'string')
+          setAccountId(data.accountId);
         if (alive && 'syncEnabled' in data && data.syncEnabled === true &&
           'accountId' in data && typeof data.accountId === 'string')
           setSyncAccount(data.accountId);
@@ -51,19 +57,15 @@ export function CloudAccount() {
 
   const logout = async () => {
     setLeaving(true);
-    setLogoutError(false);
+    setLogoutError(undefined);
     try {
-      const response = await fetch('/auth/logout', {
-        method: 'POST',
-        credentials: 'same-origin',
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!response.ok) throw new Error();
-      localStorage.setItem(CLOUD_LOGOUT_EVENT, String(Date.now()));
+      await logoutCloudAccount(accountId);
+      refresh();
       setSyncAccount(null);
       setState('signedOut');
-    } catch {
-      setLogoutError(true);
+    } catch (error) {
+      setLogoutError(error instanceof Error && error.message === 'cloud_logout_pending'
+        ? 'logoutPending' : 'logoutError');
     } finally {
       setLeaving(false);
     }
@@ -92,6 +94,7 @@ export function CloudAccount() {
           <Button full onClick={() => void logout()} disabled={leaving || profileBusy}>
             {t(leaving ? 'cloud.signingOut' : 'cloud.signOut')}
           </Button>
+          {accountId && <p className="text-caption text-muted">{t('cloud.logoutCopyHint')}</p>}
         </>
       )}
       {state === 'unavailable' && (
@@ -101,7 +104,7 @@ export function CloudAccount() {
       )}
       {logoutError && (
         <p className="text-caption text-over" role="alert">
-          {t('cloud.logoutError')}
+          {t(`cloud.${logoutError}`)}
         </p>
       )}
       <p className="text-caption text-muted">{t(syncAccount ? 'cloud.separateProfiles' : 'cloud.localNotice')}</p>

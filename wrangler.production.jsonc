@@ -3,12 +3,14 @@
   "name": "fitnessmy",
   "main": "backend/index.ts",
   "compatibility_date": "2026-11-02",
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
   "send_metrics": false,
   "vars": {
     "APP_ORIGIN": "https://fitnessmy.hpavel729.workers.dev",
-    "ALLOWED_GITHUB_ID": "43194562"
+    "ALLOWED_GITHUB_ID": "43194562",
+    "GITHUB_CLIENT_ID": "Ov23lian1Br93mfhk8vm",
+    "CLOUD_SYNC_ENABLED": "true"
   },
   "d1_databases": [
     {

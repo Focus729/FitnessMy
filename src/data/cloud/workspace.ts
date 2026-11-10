@@ -20,6 +20,14 @@ export interface CloudSession {
 }
 export const CLOUD_LOGOUT_EVENT = 'lenta.cloudLogout';
 
+export async function withCloudAccountLock<T>(
+  accountId: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  if (!navigator.locks) throw new Error('sync_browser_unsupported');
+  return await navigator.locks.request(`fitnessmy-account:${accountId}`, work);
+}
+
 export async function readCloudSession(
   signal?: AbortSignal,
 ): Promise<CloudSession | null> {
@@ -210,8 +218,35 @@ export async function openOwnedWorkspace(
   accountId: string,
   profile: OwnedCloudProfile,
 ): Promise<string> {
+  return withCloudAccountLock(accountId, async () => {
+    const session = await readCloudSession();
+    if (!session?.syncEnabled || session.accountId !== accountId)
+      throw new Error('cloud_sign_in_required');
+    return openVerifiedWorkspace(accountId, profile);
+  });
+}
+
+async function openVerifiedWorkspace(
+  accountId: string,
+  profile: OwnedCloudProfile,
+): Promise<string> {
   const id = `cloud:${accountId}:${profile.id}`;
   const db = openDb(id);
+  // Only a fresh server session and the account lock can recover an interrupted logout.
+  await db.transaction('rw', db.cloudState, async () => {
+    const link = await db.cloudState.get('link');
+    if (
+      link?.locked &&
+      link.accountId === accountId &&
+      link.profileId === profile.id
+    ) {
+      await db.cloudState.delete('offlineAccess');
+      await db.cloudState.put({ ...link, locked: false });
+      const state = db.table('cloudState');
+      if (!(await state.get('progress')))
+        await state.add({ key: 'progress', baselines: [] });
+    }
+  });
   await attachEmptyWorkspace(db, accountId, profile.id);
   const state = db.table<{ key: string }, string>('cloudState');
   if (!(await state.get('initialHydration'))) {

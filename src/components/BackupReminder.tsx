@@ -65,7 +65,9 @@ export function BackupReminder({
   return (
     <Sheet open onClose={snooze} title={t('backup.reminderTitle')}>
       <p className="text-body text-muted">
-        {lastBackupAt ? t('backup.reminderBody', { days }) : t('backup.reminderNever')}
+        {ref.cloud
+          ? t('cloud.backupReminder')
+          : lastBackupAt ? t('backup.reminderBody', { days }) : t('backup.reminderNever')}
       </p>
       <div className="mt-4 flex flex-col gap-2">
         {saving.state === 'error' ? <p role="alert">{t('errors.saveFailed')}</p> : null}

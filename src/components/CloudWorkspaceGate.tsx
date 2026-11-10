@@ -11,6 +11,7 @@ import {
 import { SyncRequestError } from '@/data/cloud/transport';
 import { useSession } from '@/app/store';
 import { CloudConflicts } from './CloudConflicts';
+import { hasOfflineAccess, setOfflineAccess } from '@/data/cloud/device-access';
 
 type Status =
   | 'connecting'
@@ -37,11 +38,21 @@ export function CloudWorkspaceGate({
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let running = false;
+    let rerun = false;
     let failures = 0;
     let delay = 30_000;
     let retryAt = 0;
+    const workspace = { id, accountId, profileId };
+    const lockView = () => {
+      setOpened(false);
+      setStatus('reauthenticate');
+    };
     const run = async () => {
-      if (controller.signal.aborted || running || document.hidden) return;
+      if (controller.signal.aborted || document.hidden) return;
+      if (running) {
+        rerun = true;
+        return;
+      }
       if (Date.now() < retryAt) {
         clearTimeout(timer);
         timer = setTimeout(() => void run(), retryAt - Date.now());
@@ -51,6 +62,9 @@ export function CloudWorkspaceGate({
       running = true;
       try {
         if (!navigator.onLine) {
+          const trusted = await hasOfflineAccess(workspace);
+          if (controller.signal.aborted) return;
+          if (trusted) setOpened(true);
           setStatus('syncOffline');
           return;
         }
@@ -59,8 +73,8 @@ export function CloudWorkspaceGate({
         );
         if (controller.signal.aborted) return;
         if (!session || session.accountId !== accountId) {
-          setOpened(false);
-          setStatus('reauthenticate');
+          lockView();
+          await setOfflineAccess(workspace, false).catch(() => undefined);
           return;
         }
         if (!session.syncEnabled) {
@@ -79,8 +93,8 @@ export function CloudWorkspaceGate({
       } catch (error) {
         if (controller.signal.aborted) return;
         if (error instanceof SyncRequestError && error.status === 401) {
-          setOpened(false);
-          setStatus('reauthenticate');
+          lockView();
+          await setOfflineAccess(workspace, false).catch(() => undefined);
           return;
         }
         const conflict =
@@ -96,8 +110,10 @@ export function CloudWorkspaceGate({
           retryAt = Date.now() + delay;
       } finally {
         running = false;
-        if (!controller.signal.aborted && !document.hidden)
-          timer = setTimeout(() => void run(), delay);
+        if (!controller.signal.aborted && !document.hidden) {
+          timer = setTimeout(() => void run(), rerun ? 0 : delay);
+          rerun = false;
+        }
       }
     };
     const wake = () => {
@@ -106,10 +122,15 @@ export function CloudWorkspaceGate({
     const offline = () => setStatus('syncOffline');
     const signedOut = (event: StorageEvent) => {
       if (event.key !== CLOUD_LOGOUT_EVENT) return;
+      try {
+        if (JSON.parse(event.newValue ?? 'null')?.accountId !== accountId)
+          return;
+      } catch {
+        return;
+      }
       controller.abort();
       clearTimeout(timer);
-      setOpened(false);
-      setStatus('reauthenticate');
+      lockView();
     };
     const stopWatching = watchPendingCloudChanges(id, wake);
     wake();
@@ -132,7 +153,11 @@ export function CloudWorkspaceGate({
     return (
       <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-3 px-6">
         <p role="status" className="text-caption">
-          {t(`cloud.${status}`)}
+          {t(
+            status === 'syncOffline'
+              ? 'cloud.offlineAccessRequired'
+              : `cloud.${status}`,
+          )}
         </p>
         {status === 'reauthenticate' && (
           <Button

@@ -47,14 +47,15 @@ import { useRepos } from '@/data/repositories/context';
 export function App() {
   const { activeProfileId, unlocked } = useSession();
 
-  if (!activeProfileId || !unlocked) return <ProfileGate />;
+  const ref = activeProfileId ? getProfileRef(activeProfileId) : undefined;
+  if (!activeProfileId || !ref || !unlocked) return <ProfileGate />;
 
   const workspace = (
     <RepositoriesProvider key={activeProfileId} profileId={activeProfileId}>
       <ProfileScope profileId={activeProfileId} />
     </RepositoriesProvider>
   );
-  const cloud = getProfileRef(activeProfileId)?.cloud;
+  const cloud = ref.cloud;
   return cloud
     ? <CloudWorkspaceGate key={activeProfileId} id={activeProfileId} {...cloud}>{workspace}</CloudWorkspaceGate>
     : workspace;
