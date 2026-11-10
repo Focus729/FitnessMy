@@ -1,6 +1,12 @@
 import type { LentaDB } from '../db/schema';
 import { withoutCloudCapture } from './outbox';
-import { validateCloudEntity, CLOUD_ENTITY_TYPES } from './schema';
+import {
+  isCatalogType,
+  validateCloudWireEntity,
+  CLOUD_ENTITY_TYPES,
+} from './schema';
+import { hydrateCatalogRecord } from './catalog';
+import { loadCatalogRows } from '../seed/catalog-rows';
 import { defaultSettings } from '../defaults';
 import type { BlobRecord } from '../../domain/model';
 import { deriveHydratedProgress } from './derive-progress';
@@ -46,7 +52,7 @@ export async function receivePage(
     throw new Error('invalid_sync_page');
   let last = expectedCursor;
   for (const change of page.changes) {
-    validateCloudEntity(change.type, change.payload);
+    validateCloudWireEntity(change.type, change.payload);
     if (
       !Number.isSafeInteger(change.sequence) ||
       change.sequence <= last ||
@@ -58,6 +64,11 @@ export async function receivePage(
       throw new Error('invalid_sync_page');
     last = change.sequence;
   }
+  const catalog = page.changes.some((change) =>
+    Object.hasOwn(change.payload, 'catalogVersion'),
+  )
+    ? await loadCatalogRows()
+    : undefined;
   const stores = [
     'blobs',
     ...CLOUD_ENTITY_TYPES,
@@ -135,6 +146,18 @@ export async function receivePage(
         change.revision >= (version?.serverRevision ?? 0)
       ) {
         let value = structuredClone(change.payload);
+        if (
+          isCatalogType(change.type) &&
+          Object.hasOwn(value, 'catalogVersion')
+        ) {
+          const local = await db.table(change.type).get(change.id);
+          value = hydrateCatalogRecord(
+            change.type,
+            value,
+            catalog,
+            local?.createdAt,
+          );
+        }
         // Preserve excluded device-local settings and PIN while applying shared fields.
         if (change.type === 'settings' || change.type === 'profile') {
           const local =

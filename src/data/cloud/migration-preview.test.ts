@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest';
 import { previewCloudMigration } from './migration-preview';
 import { defaultSettings } from '../defaults';
+import { loadCatalogRows } from '../seed/catalog-rows';
 const stamp = '2026-11-05T10:00:00.000Z';
 const file = () => ({
   format: 'lenta-backup',
@@ -63,4 +64,36 @@ it('reports invalid file encoding instead of silently omitting it', async () => 
   expect(
     (await previewCloudMigration(JSON.stringify(backup))).issues,
   ).toContainEqual({ code: 'invalid_attachment_encoding', id: 'photo' });
+});
+it('excludes shipped catalogs from the upload estimate and includes actual overrides', async () => {
+  const defaults = await loadCatalogRows();
+  const backup = {
+    ...file(),
+    tables: {
+      ...file().tables,
+      foods: [...defaults.foods.values()].map((row) => ({
+        ...row,
+        createdAt: stamp,
+        updatedAt: stamp,
+      })),
+      exercises: [...defaults.exercises.values()].map((row) => ({
+        ...row,
+        createdAt: stamp,
+        updatedAt: stamp,
+      })),
+    },
+  };
+  const withoutCatalogs = await previewCloudMigration(JSON.stringify(file()));
+  const initial = await previewCloudMigration(JSON.stringify(backup));
+  expect(initial.issues).toEqual([]);
+  expect(initial.projectedRecordBytes).toBe(
+    withoutCatalogs.projectedRecordBytes,
+  );
+  expect(initial.fingerprint).toBe(withoutCatalogs.fingerprint);
+  backup.tables.foods[0]!.isFavorite = true;
+  const edited = await previewCloudMigration(JSON.stringify(backup));
+  expect(edited.projectedRecordBytes).toBeGreaterThan(
+    initial.projectedRecordBytes,
+  );
+  expect(edited.fingerprint).not.toBe(initial.fingerprint);
 });

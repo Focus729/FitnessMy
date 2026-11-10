@@ -8,6 +8,7 @@ import { commitSyncBatch, pullSyncChanges } from './sync-store';
 import { resolveConflict } from '../src/data/cloud/resolve';
 import type { FileTransport } from '../src/data/cloud/attachments';
 import type { GameState } from '../src/domain/model';
+import { loadCatalogRows } from '../src/data/seed/catalog-rows';
 import {
   beginAttachment,
   putAttachmentChunk,
@@ -54,6 +55,35 @@ const water = (id: string, ml = 250) => ({
   ml,
   createdAt: '2026-11-05T10:00:00.000Z',
   updatedAt: '2026-11-05T10:00:00.000Z',
+});
+it('sends only the catalog override and restores defaults after clearing it', async () => {
+  const defaults = [...(await loadCatalogRows()).foods.values()][0]!;
+  const stamp = '2026-11-05T10:00:00.000Z';
+  await phone.foods.put({
+    ...defaults,
+    createdAt: stamp,
+    updatedAt: stamp,
+    isFavorite: true,
+  });
+  await syncOnce(phone, 'a', 'p', transport);
+  const published = await transport.pull(0);
+  expect(published.changes[0]?.payload).toEqual({
+    id: defaults.id,
+    catalogVersion: '1',
+    updatedAt: stamp,
+    values: { isFavorite: true },
+    removed: [],
+  });
+  await syncOnce(pc, 'a', 'p', transport);
+  expect(await pc.foods.get(defaults.id)).toMatchObject({
+    ...defaults,
+    isFavorite: true,
+  });
+  await phone.foods.update(defaults.id, { isFavorite: false });
+  await syncOnce(phone, 'a', 'p', transport);
+  await syncOnce(pc, 'a', 'p', transport);
+  expect(await pc.foods.get(defaults.id)).toMatchObject(defaults);
+  expect(await pc.cloudOutbox.count()).toBe(0);
 });
 it('hydrates legacy progress and merges concurrent achievements without awarding duplicate XP', async () => {
   const date = '2026-11-05';

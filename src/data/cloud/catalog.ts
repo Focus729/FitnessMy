@@ -1,10 +1,68 @@
-import { projectCloudEntity, validateCloudEntity } from './schema';
+import {
+  projectCloudEntity,
+  validateCloudEntity,
+  type CatalogType,
+} from './schema';
+import type { CatalogRows } from '../seed/catalog-rows';
+import { SEED_VERSION } from '../seed/version';
 
 export interface CatalogOverride {
   id: string;
   catalogVersion: string;
   values: Record<string, unknown>;
   removed: string[];
+}
+
+function catalogBaseline(
+  type: CatalogType,
+  id: string,
+  catalog: CatalogRows | undefined,
+  stamp: unknown,
+) {
+  const row = catalog?.[type].get(id);
+  if (!row) throw new Error('catalog_baseline_unavailable');
+  return { ...row, createdAt: stamp, updatedAt: stamp };
+}
+
+export function catalogWirePayload(
+  type: CatalogType,
+  record: Record<string, unknown>,
+  catalog: CatalogRows | undefined,
+): Record<string, unknown> {
+  const id = String(record.id);
+  const catalogVersion = String(SEED_VERSION);
+  const baseline = catalogBaseline(type, id, catalog, record.createdAt);
+  // An empty override restores the shipped defaults after a prior edit.
+  const override = projectCatalogOverride(
+    type,
+    record,
+    baseline,
+    catalogVersion,
+  ) ?? { id, catalogVersion, values: {}, removed: [] };
+  return { ...override, updatedAt: record.updatedAt };
+}
+
+export function hydrateCatalogRecord(
+  type: CatalogType,
+  payload: Record<string, unknown>,
+  catalog: CatalogRows | undefined,
+  localCreatedAt?: string,
+): Record<string, unknown> {
+  const baseline = catalogBaseline(
+    type,
+    String(payload.id),
+    catalog,
+    localCreatedAt ?? payload.updatedAt,
+  );
+  return {
+    ...applyCatalogOverride(
+      type,
+      baseline,
+      payload as unknown as CatalogOverride,
+      String(SEED_VERSION),
+    ),
+    updatedAt: payload.updatedAt,
+  };
 }
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;

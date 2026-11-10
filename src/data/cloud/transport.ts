@@ -1,6 +1,6 @@
 import type { SyncTransport } from './sync-once';
 import type { RemoteChange, RemotePage } from './receive';
-import { validateCloudEntity } from './schema';
+import { validateCloudWireEntity } from './schema';
 import { MAX_BATCH_MUTATIONS } from './limits';
 
 export class SyncRequestError extends Error {
@@ -36,7 +36,7 @@ function changes(value: unknown, limit = 100): asserts value is RemoteChange[] {
       item.sequence < 1
     )
       throw new Error('invalid_sync_response');
-    validateCloudEntity(item.type, item.payload);
+    validateCloudWireEntity(item.type, item.payload);
     if (item.payload.id !== item.id) throw new Error('invalid_sync_response');
   }
 }

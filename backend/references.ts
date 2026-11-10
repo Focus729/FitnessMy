@@ -81,6 +81,13 @@ export async function validateReferences(
   );
   const references = new Map<string, Reference>();
   for (const mutation of mutations) {
+    if (mutation.type === 'foods' || mutation.type === 'exercises') {
+      const builtIn = (mutation.type === 'foods' ? foods : exercises).has(
+        mutation.id,
+      );
+      if (builtIn !== Object.hasOwn(mutation.payload, 'catalogVersion'))
+        throw new HttpError(400, 'invalid_catalog_identity');
+    }
     // These relations are required by their discriminant, even though the local model uses an optional property.
     if (
       mutation.type === 'diary' &&

@@ -1,4 +1,6 @@
-/** Shared, dependency-free cloud boundary. Backup validation is intentionally separate. */
+import { SEED_VERSION } from '../seed/version';
+
+/** Shared cloud boundary. Backup validation is intentionally separate. */
 type Rule = (value: unknown) => boolean;
 type Fields = Record<string, Rule>;
 const object = (v: unknown): v is Record<string, unknown> =>
@@ -445,6 +447,39 @@ const progressFields: Fields = {
   streaks,
 };
 
+export type CatalogType = 'foods' | 'exercises';
+export function isCatalogType(type: string): type is CatalogType {
+  return type === 'foods' || type === 'exercises';
+}
+
+function catalogFields(type: CatalogType): Fields {
+  const fields: Fields = { ...entityFields[type], deletedAt: opt(stamp) };
+  delete fields.source;
+  return {
+    id,
+    catalogVersion: one(String(SEED_VERSION)),
+    updatedAt: stamp,
+    values: (value) =>
+      object(value) &&
+      Object.entries(value).every(
+        ([key, item]) =>
+          Object.hasOwn(fields, key) &&
+          item !== undefined &&
+          fields[key]!(item),
+      ),
+    removed: (value) =>
+      Array.isArray(value) &&
+      value.length <= Object.keys(fields).length &&
+      new Set(value).size === value.length &&
+      value.every(
+        (key) =>
+          typeof key === 'string' &&
+          Object.hasOwn(fields, key) &&
+          fields[key]!(undefined),
+      ),
+  };
+}
+
 export type CloudEntityType =
   keyof typeof entityFields | 'settings' | 'gameState';
 export const CLOUD_ENTITY_TYPES: readonly CloudEntityType[] = [
@@ -469,10 +504,19 @@ export function validateCloudEntity(
       ? settingsFields
       : type === 'gameState'
         ? progressFields
-        : Object.hasOwn(entityFields, type)
-          ? { ...base, ...entityFields[type as keyof typeof entityFields] }
-          : null;
+        : isCatalogType(type) &&
+            object(value) &&
+            Object.hasOwn(value, 'catalogVersion')
+          ? catalogFields(type)
+          : Object.hasOwn(entityFields, type)
+            ? { ...base, ...entityFields[type as keyof typeof entityFields] }
+            : null;
   if (!fields || !shape(fields)(value)) throw new CloudValidationError();
+  if (object(value) && Object.hasOwn(value, 'catalogVersion')) {
+    const values = value.values as Record<string, unknown>;
+    if ((value.removed as string[]).some((key) => Object.hasOwn(values, key)))
+      throw new CloudValidationError();
+  }
   let encoded: string;
   try {
     encoded = JSON.stringify(value);
@@ -510,6 +554,15 @@ export interface CloudMutation {
   expectedRevision: number;
   payload: Record<string, unknown>;
 }
+export function validateCloudWireEntity(
+  type: string,
+  value: unknown,
+): asserts value is Record<string, unknown> {
+  validateCloudEntity(type, value);
+  if (isCatalogType(type) && value.source === 'seed')
+    throw new CloudValidationError();
+}
+
 export function validateCloudMutation(
   value: unknown,
 ): asserts value is CloudMutation {
@@ -525,6 +578,6 @@ export function validateCloudMutation(
   )
     throw new CloudValidationError();
   const mutation = value as unknown as CloudMutation;
-  validateCloudEntity(mutation.type, mutation.payload);
+  validateCloudWireEntity(mutation.type, mutation.payload);
   if (mutation.id !== mutation.payload.id) throw new CloudValidationError();
 }

@@ -36,8 +36,8 @@ Rechecked official [D1 batch transaction semantics](https://developers.cloudflar
 
 1. Connect guarded upload resume/restart to the client and inventory actual attachment sizes; keep any over-limit originals available for a reviewed migration decision. Finalized attachment cancellation/deletion remains disabled.
 2. Add rate limits and physical storage/usage reporting. Logical application budgets do not constitute full operational quota monitoring.
-3. Finish progress date selection and migration baseline initialization. Workout totals and progress wire adapters are implemented internally. Complete catalog override transport and hydration before HTTP activation.
-4. Wire authenticated bounded API routes with same-origin checks, consistent errors and no sensitive logging. Keep the storage primitives internal until the preceding gates pass.
+3. Finish progress date selection and migration baseline initialization. Workout totals, progress wire adapters and catalog override transport are implemented.
+4. Authenticated bounded Worker routes for sync, usage and attachments are wired behind `CLOUD_SYNC_ENABLED=true`. Keep the flag absent until the activation gates pass.
 5. Add atomic Dexie outbox/cursor/conflict persistence across repository mutations, undo, imports and reset; explicitly suppress seed/remote hydration enqueueing.
 6. Implement profile linking, trusted-device and logout/pending-write flows, migration preview, both-device tests and personal cutover before retiring Pages.
 
@@ -139,4 +139,12 @@ Hydration and remote conflict selection recalculate affected workout totals from
 
 Verification passed for app/backend types and changed-file lint, all 101 backend tests and 56 affected app tests. The preceding full app run passed 273 tests before the workout hydration change.
 
-The authenticated Worker sync routes remain gated. A shared profile date, phone migration workflow, catalog override wire adapter and a user-facing repair path for mismatched XP awards still need integration.
+The authenticated Worker sync routes remain gated. A shared profile date, phone migration workflow and a user-facing repair path for mismatched XP awards still need integration.
+
+## Catalog overrides and guarded Worker dispatch — 2026-11-10
+
+Seeded foods and exercises share the exact versioned asset defaults used for first launch. The outbox sends only changed fields and explicit removals. An empty override restores defaults. The server validates the catalog version, change fields, removals and built-in ID membership before creating a receipt. Hydration reconstructs full local records without enqueueing them. First launch fills missing seed rows and preserves overrides already applied. Migration preview counts shipped records for review and excludes unchanged rows from the upload estimate and fingerprint.
+
+The Worker dispatches profile sync, usage and attachment paths only after session validation and only when `CLOUD_SYNC_ENABLED` is explicitly `true`. The staging configuration leaves the flag absent. Staging proof with authenticated Worker bindings is still required before user activation.
+
+All 104 backend tests, app/backend types and changed-file lint passed. Catalog exchange was checked across two test databases, including an empty override restoring defaults. Both seed tests, all four backup-preview tests and three native Chrome storage scenarios passed.

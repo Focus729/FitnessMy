@@ -1,6 +1,12 @@
 import type { LentaDB } from '../db/schema';
 import { MAX_BATCH_MUTATIONS, MAX_BATCH_BYTES } from './limits';
-import { validateCloudMutation, type CloudMutation } from './schema';
+import {
+  isCatalogType,
+  validateCloudMutation,
+  type CloudMutation,
+} from './schema';
+import { catalogWirePayload } from './catalog';
+import { loadCatalogRows } from '../seed/catalog-rows';
 import { progressEnvelope, type ProgressMetadata } from './progress-wire';
 import type { GameState } from '../../domain/model';
 
@@ -17,6 +23,8 @@ export async function prepareNextBatch(
   accountId: string,
   profileId: string,
 ): Promise<PreparedBatch | null> {
+  // Imports must finish before IndexedDB opens the write transaction.
+  const catalog = await loadCatalogRows();
   return db.transaction(
     'rw',
     db.cloudState,
@@ -77,6 +85,8 @@ export async function prepareNextBatch(
         }
         if (entry.kind === 'delete')
           payload.deletedAt = new Date(entry.createdAt).toISOString();
+        if (isCatalogType(entry.entityType) && payload.source === 'seed')
+          payload = catalogWirePayload(entry.entityType, payload, catalog);
         const mutation = {
           operationId: entry.operationId,
           type: entry.entityType,

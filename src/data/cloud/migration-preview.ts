@@ -1,6 +1,13 @@
 import { parseBackup } from '../backup';
 import { validReferences } from '../backupValidation';
-import { projectCloudEntity, type CloudEntityType } from './schema';
+import {
+  isCatalogType,
+  projectCloudEntity,
+  validateCloudWireEntity,
+  type CloudEntityType,
+} from './schema';
+import { catalogWirePayload } from './catalog';
+import { loadCatalogRows, type CatalogRows } from '../seed/catalog-rows';
 import { legacyXpGap } from '../../domain/gamification/reconcile';
 import type { XpEvent } from '../../domain/model';
 
@@ -57,6 +64,7 @@ export async function previewCloudMigration(
   if (!validReferences(backup.tables as Record<string, unknown[]>))
     result.issues.push({ code: 'missing_entity_reference' });
   const projected: { type: string; id: string; value: unknown }[] = [];
+  let catalog: CatalogRows | undefined;
   for (const [type, records] of Object.entries(backup.tables)) {
     if (type === 'meta') continue;
     result.counts[type] = {
@@ -71,7 +79,17 @@ export async function previewCloudMigration(
         result.counts[type]!.builtIn++;
       if (type === 'gameState') continue;
       try {
-        const value = projectCloudEntity(type as CloudEntityType, row);
+        let value = projectCloudEntity(type as CloudEntityType, row);
+        if (isCatalogType(type) && row.source === 'seed') {
+          catalog ??= await loadCatalogRows();
+          value = catalogWirePayload(type, value, catalog);
+          if (
+            !Object.keys(value.values as object).length &&
+            !(value.removed as string[]).length
+          )
+            continue;
+          validateCloudWireEntity(type, value);
+        }
         projected.push({ type, id: String(row.id), value });
         result.projectedRecordBytes += new TextEncoder().encode(
           JSON.stringify(value),

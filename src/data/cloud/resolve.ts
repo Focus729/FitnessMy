@@ -1,5 +1,11 @@
 import type { LentaDB } from '../db/schema';
-import { CLOUD_ENTITY_TYPES, validateCloudEntity } from './schema';
+import {
+  CLOUD_ENTITY_TYPES,
+  isCatalogType,
+  validateCloudEntity,
+} from './schema';
+import { hydrateCatalogRecord } from './catalog';
+import { loadCatalogRows } from '../seed/catalog-rows';
 import { withoutCloudCapture, type OutboxEntry } from './outbox';
 import {
   progressEnvelope,
@@ -28,6 +34,10 @@ export async function resolveConflict(
       : choice !== 'local' && choice !== 'remote'
   )
     throw new Error('invalid_conflict_choice');
+  const catalog =
+    isCatalogType(type) && choice === 'remote'
+      ? await loadCatalogRows()
+      : undefined;
   await withoutCloudCapture(
     db,
     [...CLOUD_ENTITY_TYPES, 'cloudState', 'cloudOutbox', 'cloudVersions'],
@@ -126,6 +136,13 @@ export async function resolveConflict(
         await db.cloudOutbox.put(entry);
         next.localHead = operationId;
       } else {
+        if (isCatalogType(type) && Object.hasOwn(payload, 'catalogVersion'))
+          payload = hydrateCatalogRecord(
+            type,
+            payload,
+            catalog,
+            local?.createdAt,
+          );
         if (type === 'settings' || type === 'profile') {
           const keys =
             type === 'settings'

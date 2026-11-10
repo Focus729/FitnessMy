@@ -78,6 +78,31 @@ describe('sync reference integrity', () => {
   it('allows real built-in catalog IDs without uploading the catalogs', async () => {
     expect(await push([recipe()])).toHaveLength(1);
   });
+  it('rejects an override for an unknown ID or invalid fields', async () => {
+    const override = (id: string, values: Record<string, unknown>) => ({
+      ...mutation('foods', id, {}),
+      payload: {
+        id,
+        catalogVersion: '1',
+        updatedAt: stamp,
+        values,
+        removed: [],
+      },
+    });
+    await expect(
+      push([override('custom', { isFavorite: true })]),
+    ).rejects.toMatchObject({
+      code: 'invalid_catalog_identity',
+    });
+    await expect(
+      push([override(catalog.foods[0]!, { source: 'user' })]),
+    ).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(
+      await push([override(catalog.foods[0]!, { isFavorite: true })]),
+    ).toHaveLength(1);
+  });
   it('rejects dangling and foreign-parent references before creating a receipt', async () => {
     await expect(push([set()])).rejects.toMatchObject({
       code: 'entity_reference_unavailable',

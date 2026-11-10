@@ -1,14 +1,37 @@
 // @vitest-environment node
 import Dexie from 'dexie';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import { openDb, dbNameFor } from '../db/schema';
 import { createRepositories } from '../repositories/dexie';
 import { loadSeedData } from './load';
+import { loadCatalogRows } from './catalog-rows';
 
-const profileId = 'seed-cloud-fixture';
+let profileId: string;
+beforeEach(() => {
+  profileId = `seed-cloud-fixture-${crypto.randomUUID()}`;
+});
 afterEach(async () => {
   openDb(profileId).close();
   await Dexie.delete(dbNameFor(profileId));
+});
+
+it('preserves an override hydrated before the first seed run', async () => {
+  const db = openDb(profileId);
+  const repos = createRepositories(profileId);
+  const defaults = [...(await loadCatalogRows()).foods.values()][0]!;
+  const stamp = '2026-11-05T10:00:00.000Z';
+  await db.foods.put({
+    ...defaults,
+    createdAt: stamp,
+    updatedAt: stamp,
+    isFavorite: true,
+  });
+  await loadSeedData(repos, profileId);
+  expect(await db.foods.get(defaults.id)).toMatchObject({
+    isFavorite: true,
+    createdAt: stamp,
+  });
+  expect(await db.foods.count()).toBe((await loadCatalogRows()).foods.size);
 });
 
 it('initializes the catalog once without enqueuing it and captures subsequent favorites', async () => {
