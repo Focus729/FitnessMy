@@ -187,6 +187,8 @@ export async function commitSyncBatch(
       throw new HttpError(413, 'sync_storage_quota');
     if (message.includes('sync_revision_conflict'))
       throw new HttpError(409, 'sync_revision_conflict');
+    if (message.includes('sync_xp_award_conflict'))
+      throw new HttpError(409, 'sync_xp_award_conflict');
     if (message.includes('UNIQUE constraint failed'))
       throw new HttpError(409, 'sync_duplicate_operation');
     throw new HttpError(503, 'sync_commit_failed');

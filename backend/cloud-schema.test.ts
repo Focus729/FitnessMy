@@ -273,9 +273,35 @@ describe('cloud serialization boundary', () => {
     },
   );
   it('accounts for each enabled entity type explicitly', () => {
-    expect([...Object.keys(records), 'settings'].sort()).toEqual(
+    expect([...Object.keys(records), 'settings', 'gameState'].sort()).toEqual(
       [...CLOUD_ENTITY_TYPES].sort(),
     );
+  });
+  it('accepts progress evidence but rejects device totals and unexpected baseline fields', () => {
+    const payload = {
+      id: 'singleton',
+      updatedAt: stamp,
+      baselines: [
+        {
+          sourceProfileId: 'phone',
+          legacyXp: 90,
+          achievements: [],
+          streaks: {},
+        },
+      ],
+      unlockedAchievements: [],
+      streaks: {},
+    };
+    expect(() => validateCloudEntity('gameState', payload)).not.toThrow();
+    expect(() =>
+      validateCloudEntity('gameState', { ...payload, xp: 100 }),
+    ).toThrow();
+    expect(() =>
+      validateCloudEntity('gameState', {
+        ...payload,
+        baselines: [{ ...payload.baselines[0], token: 'fixture-secret' }],
+      }),
+    ).toThrow();
   });
   it('excludes device settings and secrets without changing the source', () => {
     const local = {
@@ -330,7 +356,7 @@ describe('cloud serialization boundary', () => {
     ).toThrow();
   });
   it('rejects unsupported stores, invalid calendar dates, non-finite values and oversized UTF-8 payloads', () => {
-    for (const type of ['meta', 'blobs', 'gameState', '__proto__'])
+    for (const type of ['meta', 'blobs', '__proto__'])
       expect(() => validateCloudEntity(type, base)).toThrow();
     expect(() =>
       validateCloudEntity('water', {

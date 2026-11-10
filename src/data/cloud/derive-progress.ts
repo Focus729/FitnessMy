@@ -2,10 +2,8 @@ import Dexie from 'dexie';
 import type { LentaDB } from '../db/schema';
 import { defaultSettings } from '../defaults';
 import { deriveStreakProgress } from '../../domain/habits/history';
-import {
-  reconcileCloudProgress,
-  type ProgressBaseline,
-} from '../../domain/gamification/cloud-progress';
+import { reconcileCloudProgress } from '../../domain/gamification/cloud-progress';
+import type { ProgressMetadata } from './progress-wire';
 import type { GameState } from '../../domain/model';
 
 /** Runs inside the caller's suppressed hydration transaction; never invents a migration baseline. */
@@ -22,7 +20,7 @@ export async function deriveHydratedProgress(
   if (Dexie.currentTransaction?.db !== db)
     throw new Error('progress_requires_transaction');
   const migration = await db
-    .table<{ key: string; baselines: ProgressBaseline[] }, string>('cloudState')
+    .table<ProgressMetadata, string>('cloudState')
     .get('progress');
   if (!migration) return;
   const [existing, settings, habits, habitLogs, diary, workouts, events] =
@@ -57,7 +55,14 @@ export async function deriveHydratedProgress(
     reconcileCloudProgress({
       baselines: migration.baselines,
       events,
-      snapshots: [state],
+      snapshots: [
+        state,
+        {
+          ...state,
+          streaks: migration.streaks ?? {},
+          unlockedAchievements: migration.unlockedAchievements ?? [],
+        },
+      ],
       derived,
       updatedAt: state.updatedAt,
     }),

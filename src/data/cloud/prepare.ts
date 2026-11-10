@@ -1,6 +1,8 @@
 import type { LentaDB } from '../db/schema';
 import { MAX_BATCH_MUTATIONS, MAX_BATCH_BYTES } from './limits';
 import { validateCloudMutation, type CloudMutation } from './schema';
+import { progressEnvelope, type ProgressMetadata } from './progress-wire';
+import type { GameState } from '../../domain/model';
 
 export interface PreparedBatch {
   key: 'push';
@@ -64,7 +66,15 @@ export async function prepareNextBatch(
           : entry.baseRevision;
         if (expectedRevision === undefined)
           throw new Error('sync_predecessor_pending');
-        const payload = structuredClone(entry.value);
+        let payload = structuredClone(entry.value);
+        if (entry.entityType === 'gameState') {
+          const metadata = await db
+            .table<ProgressMetadata, string>('cloudState')
+            .get('progress');
+          if (!metadata || entry.kind === 'delete')
+            throw new Error('sync_progress_baseline_required');
+          payload = progressEnvelope(payload as unknown as GameState, metadata);
+        }
         if (entry.kind === 'delete')
           payload.deletedAt = new Date(entry.createdAt).toISOString();
         const mutation = {
@@ -74,7 +84,6 @@ export async function prepareNextBatch(
           expectedRevision,
           payload,
         };
-        // Special progress/catalog/attachment adapters must run before this ordinary-entity path.
         validateCloudMutation(mutation);
         mutations.push(mutation);
       }

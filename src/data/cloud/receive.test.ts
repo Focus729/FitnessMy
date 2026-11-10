@@ -5,19 +5,17 @@ import { LentaDB } from '../db/schema';
 import { receivePage } from './receive';
 let db: LentaDB;
 it('derives XP and level in the same transaction without echoing game state', async () => {
-  await db
-    .table('cloudState')
-    .put({
-      key: 'progress',
-      baselines: [
-        {
-          sourceProfileId: 'phone',
-          legacyXp: 100,
-          achievements: [],
-          streaks: {},
-        },
-      ],
-    });
+  await db.table('cloudState').put({
+    key: 'progress',
+    baselines: [
+      {
+        sourceProfileId: 'phone',
+        legacyXp: 100,
+        achievements: [],
+        streaks: {},
+      },
+    ],
+  });
   const payload = {
     id: 'xp',
     date: '2026-11-05',
@@ -151,6 +149,87 @@ it('applies data and checkpoint without echoing into the outbox', async () => {
   expect((await db.water.get('w'))!.ml).toBe(500);
   expect(await db.cloudOutbox.count()).toBe(0);
   expect(await db.table('cloudState').get('pull')).toMatchObject({ cursor: 1 });
+});
+it('rebuilds workout totals after a set arrives on a later page and after deletion', async () => {
+  const stamp = '2026-11-05T10:00:00.000Z';
+  const base = { createdAt: stamp, updatedAt: stamp };
+  const workout = {
+    ...base,
+    id: 'workout',
+    date: '2026-11-05',
+    startedAt: stamp,
+    finishedAt: stamp,
+    name: 'Fixture',
+    exerciseOrder: ['exercise'],
+    totalSets: 9,
+    totalVolumeKg: 999,
+  };
+  const set = {
+    ...base,
+    id: 'set',
+    workoutId: 'workout',
+    exerciseId: 'exercise',
+    order: 0,
+    weightKg: 40,
+    reps: 10,
+    type: 'normal',
+    isCompleted: true,
+    estimated1RM: 53.3,
+  };
+  await receivePage(db, 'a', 'p', 0, {
+    changes: [
+      {
+        sequence: 1,
+        revision: 1,
+        operationId: 'w',
+        type: 'workouts',
+        id: 'workout',
+        payload: workout,
+      },
+    ],
+    cursor: 1,
+    watermark: 2,
+    done: false,
+  });
+  await receivePage(db, 'a', 'p', 1, {
+    changes: [
+      {
+        sequence: 2,
+        revision: 1,
+        operationId: 's',
+        type: 'workoutSets',
+        id: 'set',
+        payload: set,
+      },
+    ],
+    cursor: 2,
+    watermark: 2,
+    done: true,
+  });
+  expect(await db.workouts.get('workout')).toMatchObject({
+    totalSets: 1,
+    totalVolumeKg: 400,
+  });
+  await receivePage(db, 'a', 'p', 2, {
+    changes: [
+      {
+        sequence: 3,
+        revision: 2,
+        operationId: 'd',
+        type: 'workoutSets',
+        id: 'set',
+        payload: { ...set, deletedAt: stamp },
+      },
+    ],
+    cursor: 3,
+    watermark: 3,
+    done: true,
+  });
+  expect(await db.workouts.get('workout')).toMatchObject({
+    totalSets: 0,
+    totalVolumeKg: 0,
+  });
+  expect(await db.cloudOutbox.count()).toBe(0);
 });
 it('retains divergent local and remote versions instead of overwriting', async () => {
   await db.water.put(water(250));

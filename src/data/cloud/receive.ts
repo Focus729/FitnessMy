@@ -4,6 +4,8 @@ import { validateCloudEntity, CLOUD_ENTITY_TYPES } from './schema';
 import { defaultSettings } from '../defaults';
 import type { BlobRecord } from '../../domain/model';
 import { deriveHydratedProgress } from './derive-progress';
+import { storeProgressEnvelope } from './progress-wire';
+import { deriveWorkoutTotals } from './derive-workouts';
 
 export interface RemoteChange {
   sequence: number;
@@ -58,7 +60,6 @@ export async function receivePage(
   }
   const stores = [
     'blobs',
-    'gameState',
     ...CLOUD_ENTITY_TYPES,
     'cloudState',
     'cloudOutbox',
@@ -99,6 +100,7 @@ export async function receivePage(
       )
         throw new Error('sync_attachment_missing');
     }
+    const affectedWorkouts = new Set<string>();
     for (const change of page.changes) {
       const key: [string, string] = [change.type, change.id];
       const version = await db.cloudVersions.get(key);
@@ -146,7 +148,17 @@ export async function receivePage(
           for (const key of keys)
             if (local && Object.hasOwn(local, key)) value[key] = local[key];
         }
-        await db.table(change.type).put(value);
+        if (change.type === 'gameState') await storeProgressEnvelope(db, value);
+        else {
+          if (change.type === 'workouts') affectedWorkouts.add(change.id);
+          if (change.type === 'workoutSets') {
+            const previous = await db.workoutSets.get(change.id);
+            if (previous) affectedWorkouts.add(previous.workoutId);
+            if (typeof value.workoutId === 'string')
+              affectedWorkouts.add(value.workoutId);
+          }
+          await db.table(change.type).put(value);
+        }
       }
       await db.cloudVersions.put({
         ...version,
@@ -156,6 +168,7 @@ export async function receivePage(
         remoteSequence: change.sequence,
       });
     }
+    await deriveWorkoutTotals(db, affectedWorkouts);
     if (evaluationDate !== undefined)
       await deriveHydratedProgress(db, evaluationDate);
     await state.put({

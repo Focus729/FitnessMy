@@ -20,6 +20,7 @@ export async function syncOnce(
   profileId: string,
   transport: SyncTransport,
   fileTransport?: FileTransport,
+  evaluationDate?: string,
 ): Promise<void> {
   let pushError: unknown;
   if (fileTransport)
@@ -51,6 +52,9 @@ export async function syncOnce(
         !('status' in error) ||
         error.status !== 409
       )
+        throw error;
+      // Conflicting award data needs a reviewed repair before history can be reconciled.
+      if ('code' in error && error.code === 'sync_xp_award_conflict')
         throw error;
       pushError = error;
       if ('code' in error && error.code === 'sync_revision_conflict') {
@@ -100,7 +104,15 @@ export async function syncOnce(
       if (!fileTransport) throw new Error('sync_attachment_missing');
       files.push(await downloadAttachment(id, fileTransport));
     }
-    await receivePage(db, accountId, profileId, cursor, page, files);
+    await receivePage(
+      db,
+      accountId,
+      profileId,
+      cursor,
+      page,
+      files,
+      evaluationDate,
+    );
     if (page.done) {
       if (pushError) throw pushError;
       return;

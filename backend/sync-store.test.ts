@@ -19,6 +19,7 @@ beforeEach(() => {
     '0003_sync.sql',
     '0004_attachments.sql',
     '0005_sync_budget.sql',
+    '0008_xp_award_identity.sql',
   ])
     sql.exec(
       readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'),
@@ -296,7 +297,7 @@ describe('transactional sync storage', () => {
     expect(count('sync_changes')).toBe(1);
     expect(count('sync_receipts')).toBe(1);
   });
-  it('deduplicates XP across different record IDs, including deleted events', async () => {
+  it('accepts equivalent XP records and rejects changed award meaning even after deletion', async () => {
     const event = {
       operationId: 'xp:1',
       id: 'xp1',
@@ -314,18 +315,25 @@ describe('transactional sync storage', () => {
       },
     };
     await push(batch('xp', event));
+    const equivalent = {
+      ...event,
+      operationId: 'xp:2',
+      id: 'xp2',
+      payload: { ...event.payload, id: 'xp2' },
+    };
+    await push(batch('duplicate-xp', equivalent));
     await expect(
       push(
-        batch('duplicate-xp', {
+        batch('changed-xp', water('rollback'), {
           ...event,
-          operationId: 'xp:2',
-          id: 'xp2',
-          payload: { ...event.payload, id: 'xp2' },
+          operationId: 'xp:3',
+          id: 'xp3',
+          payload: { ...event.payload, id: 'xp3', amount: 11 },
         }),
       ),
-    ).rejects.toMatchObject({ status: 409 });
-    expect(count('sync_receipts')).toBe(1);
-    expect(count('sync_entities')).toBe(1);
+    ).rejects.toMatchObject({ code: 'sync_xp_award_conflict' });
+    expect(count('sync_receipts')).toBe(2);
+    expect(count('sync_entities')).toBe(2);
   });
   it('rejects malformed or oversized batches before any write', async () => {
     await expect(
@@ -334,7 +342,10 @@ describe('transactional sync storage', () => {
     await expect(push(batch('empty'))).rejects.toMatchObject({ status: 400 });
     await expect(
       push(
-        batch('large', ...Array.from({ length: 201 }, (_, i) => water(`w${i}`))),
+        batch(
+          'large',
+          ...Array.from({ length: 201 }, (_, i) => water(`w${i}`)),
+        ),
       ),
     ).rejects.toMatchObject({ status: 400 });
     await expect(

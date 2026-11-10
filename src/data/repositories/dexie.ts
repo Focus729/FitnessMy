@@ -45,6 +45,7 @@ import type {
 } from '@/domain/model';
 import { defaultSettings } from '@/data/defaults';
 import { mergeAchievements } from '@/domain/gamification/progress';
+import { reconcileXpEvents } from '@/domain/gamification/reconcile';
 import type {
   BlobRepo,
   BodyRepo,
@@ -818,7 +819,11 @@ function makeGameRepo(db: LentaDB): GameRepo {
       });
     },
     async events(limit = 50) {
-      const rows = await db.xpEvents.toArray();
+      const [events, link] = await Promise.all([
+        db.xpEvents.toArray(),
+        db.cloudState.get('link'),
+      ]);
+      const rows = link ? reconcileXpEvents(events).events : events;
       return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
     },
   };

@@ -79,8 +79,9 @@ export async function syncApi(
       return json(
         { error: error.code },
         error.status,
-        error.code === 'sync_revision_conflict'
-          ? { 'X-Sync-Error': 'sync_revision_conflict' }
+        error.code === 'sync_revision_conflict' ||
+          error.code === 'sync_xp_award_conflict'
+          ? { 'X-Sync-Error': error.code }
           : {},
       );
     return json({ error: 'sync_temporarily_unavailable' }, 503);

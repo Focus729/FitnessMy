@@ -355,7 +355,7 @@ const entityFields = {
     relapseNote: opt(text),
     relapseCount: opt(nonnegative),
   },
-  xpEvents: { date, reason: id, amount: number, dedupeKey: id },
+  xpEvents: { date, reason: id, amount: integer, dedupeKey: id },
 } satisfies Record<string, Fields>;
 
 const settingsFields: Fields = {
@@ -417,10 +417,40 @@ const settingsFields: Fields = {
   plates: shape({ availableKg: list(positive), barKg: nonnegative }),
 };
 
-export type CloudEntityType = keyof typeof entityFields | 'settings';
+const streaks: Rule = (value) =>
+  object(value) &&
+  Object.keys(value).length <= 2000 &&
+  Object.entries(value).every(
+    ([key, item]) =>
+      id(key) &&
+      shape({
+        current: integer,
+        best: integer,
+        lastDate: (v) => v === '' || date(v),
+      })(item),
+  );
+const achievements = list(shape({ key: id, unlockedAt: stamp }));
+const progressFields: Fields = {
+  id: one('singleton'),
+  updatedAt: stamp,
+  baselines: list(
+    shape({
+      sourceProfileId: id,
+      legacyXp: integer,
+      achievements,
+      streaks,
+    }),
+  ),
+  unlockedAchievements: achievements,
+  streaks,
+};
+
+export type CloudEntityType =
+  keyof typeof entityFields | 'settings' | 'gameState';
 export const CLOUD_ENTITY_TYPES: readonly CloudEntityType[] = [
   ...(Object.keys(entityFields) as (keyof typeof entityFields)[]),
   'settings',
+  'gameState',
 ];
 export const MAX_ENTITY_BYTES = 64 * 1024;
 export class CloudValidationError extends Error {
@@ -437,9 +467,11 @@ export function validateCloudEntity(
   const fields =
     type === 'settings'
       ? settingsFields
-      : Object.hasOwn(entityFields, type)
-        ? { ...base, ...entityFields[type as keyof typeof entityFields] }
-        : null;
+      : type === 'gameState'
+        ? progressFields
+        : Object.hasOwn(entityFields, type)
+          ? { ...base, ...entityFields[type as keyof typeof entityFields] }
+          : null;
   if (!fields || !shape(fields)(value)) throw new CloudValidationError();
   let encoded: string;
   try {

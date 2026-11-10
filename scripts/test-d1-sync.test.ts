@@ -66,6 +66,8 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
         result.errors?.map((entry) => entry.message).join(' ') ?? '';
       if (messages.includes('sync_revision_conflict'))
         throw new Error('sync_revision_conflict');
+      if (messages.includes('sync_xp_award_conflict'))
+        throw new Error('sync_xp_award_conflict');
       if (messages.includes('sync_storage_quota'))
         throw new Error('sync_storage_quota');
       if (messages.includes('UNIQUE constraint failed'))
@@ -292,6 +294,31 @@ it('proves sync rollback, retry receipts, concurrent CAS and pagination on stagi
       ),
     ).rejects.toMatchObject({ code: 'sync_revision_conflict' });
     expect(await count('sync_changes')).toBe(beforeLargeFailure);
+    const award = (id: string, amount = 20) => ({
+      operationId: randomUUID(),
+      type: 'xpEvents' as const,
+      id,
+      expectedRevision: 0,
+      payload: {
+        id,
+        createdAt: stamp,
+        updatedAt: stamp,
+        date: '2026-11-03',
+        reason: 'workout',
+        dedupeKey: 'workout:shared',
+        amount,
+      },
+    });
+    const awards = await Promise.all([
+      push(batch(award('phone-xp'))),
+      push(batch(award('pc-xp'))),
+    ]);
+    expect(awards.map(([change]) => change.id)).toEqual(['phone-xp', 'pc-xp']);
+    const beforeAwardConflict = await count('sync_changes');
+    await expect(
+      push(batch(mutation('rollback-xp'), award('invalid-xp', 21))),
+    ).rejects.toMatchObject({ code: 'sync_xp_award_conflict' });
+    expect(await count('sync_changes')).toBe(beforeAwardConflict);
     const usage = await profileStorageUsage(db, owner, 'profile');
     expect(usage.records).toBeGreaterThan(0);
     expect(usage.changes).toBeGreaterThanOrEqual(usage.records);

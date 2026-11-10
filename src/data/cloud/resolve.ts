@@ -1,6 +1,14 @@
 import type { LentaDB } from '../db/schema';
 import { CLOUD_ENTITY_TYPES, validateCloudEntity } from './schema';
 import { withoutCloudCapture, type OutboxEntry } from './outbox';
+import {
+  progressEnvelope,
+  storeProgressEnvelope,
+  type ProgressMetadata,
+} from './progress-wire';
+import { deriveHydratedProgress } from './derive-progress';
+import { deriveWorkoutTotals } from './derive-workouts';
+import type { GameState } from '../../domain/model';
 
 /** Called only after an explicit choice, with the exact versions shown to the user. */
 export async function resolveConflict(
@@ -11,9 +19,14 @@ export async function resolveConflict(
   id: string,
   expectedRemoteRevision: number,
   expectedLocalHead: string | undefined,
-  choice: 'local' | 'remote',
+  choice: 'local' | 'remote' | 'merge',
+  evaluationDate?: string,
 ): Promise<void> {
-  if (choice !== 'local' && choice !== 'remote')
+  if (
+    type === 'gameState'
+      ? choice !== 'merge' || !evaluationDate
+      : choice !== 'local' && choice !== 'remote'
+  )
     throw new Error('invalid_conflict_choice');
   await withoutCloudCapture(
     db,
@@ -61,7 +74,21 @@ export async function resolveConflict(
             ? { deletedAt: new Date(last.createdAt).toISOString() }
             : {}),
         };
-      validateCloudEntity(type, payload);
+      if (choice === 'merge') {
+        if (!last || last.kind === 'delete')
+          throw new Error('sync_local_version_missing');
+        await storeProgressEnvelope(db, version.conflict.payload);
+        const metadata = await db
+          .table<ProgressMetadata, string>('cloudState')
+          .get('progress');
+        if (!metadata) throw new Error('sync_progress_baseline_required');
+        // Validate the eventual retry without replacing the raw local queue snapshot.
+        progressEnvelope(last.value as unknown as GameState, metadata);
+        payload = last.value;
+        await deriveHydratedProgress(db, evaluationDate!);
+      } else {
+        validateCloudEntity(type, payload);
+      }
       await state.put({
         key: `conflictRecovery:${crypto.randomUUID()}`,
         accountId,
@@ -78,7 +105,7 @@ export async function resolveConflict(
       const next = { ...version };
       delete next.conflict;
       delete next.localHead;
-      if (choice === 'local') {
+      if (choice !== 'remote') {
         const operationId = crypto.randomUUID();
         const entry: OutboxEntry = {
           operationId,
@@ -109,6 +136,13 @@ export async function resolveConflict(
               payload[field] = local[field];
         }
         await db.table(type).put(payload);
+        if (type === 'workouts') await deriveWorkoutTotals(db, [id]);
+        if (type === 'workoutSets') {
+          const workouts = [local?.workoutId, payload.workoutId].filter(
+            (value): value is string => typeof value === 'string',
+          );
+          await deriveWorkoutTotals(db, workouts);
+        }
       }
       await db.cloudVersions.put(next);
       if (prepared) {

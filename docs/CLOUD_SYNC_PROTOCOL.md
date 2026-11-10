@@ -36,7 +36,7 @@ Rechecked official [D1 batch transaction semantics](https://developers.cloudflar
 
 1. Connect guarded upload resume/restart to the client and inventory actual attachment sizes; keep any over-limit originals available for a reviewed migration decision. Finalized attachment cancellation/deletion remains disabled.
 2. Add rate limits and physical storage/usage reporting. Logical application budgets do not constitute full operational quota monitoring.
-3. Implement derived workout totals, complete XP/achievement/freeze merge behavior and catalog override projection. Strict rejection of gameState is temporary, not removal from the approved scope.
+3. Finish progress date selection and migration baseline initialization. Workout totals and progress wire adapters are implemented internally. Complete catalog override transport and hydration before HTTP activation.
 4. Wire authenticated bounded API routes with same-origin checks, consistent errors and no sensitive logging. Keep the storage primitives internal until the preceding gates pass.
 5. Add atomic Dexie outbox/cursor/conflict persistence across repository mutations, undo, imports and reset; explicitly suppress seed/remote hydration enqueueing.
 6. Implement profile linking, trusted-device and logout/pending-write flows, migration preview, both-device tests and personal cutover before retiring Pages.
@@ -128,3 +128,15 @@ Streak calculation is now a pure shared function in domain/habits/history.ts, wi
 Wire progress envelopes, baseline distribution/approval during migration, automatic duplicate-XP wire identity reconciliation and common evaluation-date selection are not connected yet. This does not enable gameState uploads or claim full progress synchronization.
 
 Post-refactor verification: all 273 app tests passed; app/backend types and affected lint passed. Deployment remains the previously verified d476b57 staging revision.
+
+## Progress exchange and workout hydration — 2026-11-10
+
+`gameState` now has a separate wire shape containing reviewed baselines, achievements and streak evidence. A linked outbox requires explicit progress metadata before preparing this mutation. Incoming progress evidence goes into cloud metadata, and an evaluation date supplied by the cycle caller enables atomic derivation of the local game state. Progress conflicts merge both evidence sets and keep recovery copies. Conflicting baseline amounts for the same source roll back the merge.
+
+Migration 0008 replaces the unique XP award-key index with a lookup index and a transaction guard. Independent devices may record the same award under different record IDs if the key, amount, date and reason agree. The derived total and linked event history count the award once. Incompatible award meaning aborts the batch and returns a specific error. A deleted award retains its identity. Staging D1 accepted concurrent equivalent awards and rolled back a batch containing an incompatible award. The remote suite removed its synthetic fixture and confirmed the prior storage budget.
+
+Hydration and remote conflict selection recalculate affected workout totals from local set rows in the same transaction, including set movement and deletion. The local regression covers a workout and its sets arriving on different pages.
+
+Verification passed for app/backend types and changed-file lint, all 101 backend tests and 56 affected app tests. The preceding full app run passed 273 tests before the workout hydration change.
+
+The authenticated Worker sync routes remain gated. A shared profile date, phone migration workflow, catalog override wire adapter and a user-facing repair path for mismatched XP awards still need integration.

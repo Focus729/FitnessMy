@@ -42,7 +42,7 @@ export interface OutboxEntry {
   status: 'pending';
   createdAt: number;
 }
-const tracked = new Set<string>([...CLOUD_ENTITY_TYPES, 'gameState', 'blobs']);
+const tracked = new Set<string>([...CLOUD_ENTITY_TYPES, 'blobs']);
 const suppressed = new WeakSet<DBCoreTransaction>();
 type Row = Record<string, unknown>;
 function object(value: unknown): value is Row {

@@ -7,6 +7,7 @@ import { syncOnce, type SyncTransport } from '../src/data/cloud/sync-once';
 import { commitSyncBatch, pullSyncChanges } from './sync-store';
 import { resolveConflict } from '../src/data/cloud/resolve';
 import type { FileTransport } from '../src/data/cloud/attachments';
+import type { GameState } from '../src/domain/model';
 import {
   beginAttachment,
   putAttachmentChunk,
@@ -53,6 +54,82 @@ const water = (id: string, ml = 250) => ({
   ml,
   createdAt: '2026-11-05T10:00:00.000Z',
   updatedAt: '2026-11-05T10:00:00.000Z',
+});
+it('hydrates legacy progress and merges concurrent achievements without awarding duplicate XP', async () => {
+  const date = '2026-11-05';
+  const stamp = `${date}T10:00:00.000Z`;
+  const state: GameState = {
+    id: 'singleton',
+    xp: 100,
+    level: 1,
+    freezes: 0,
+    streaks: {},
+    unlockedAchievements: [],
+    updatedAt: stamp,
+  };
+  await phone.table('cloudState').put({
+    key: 'progress',
+    baselines: [
+      {
+        sourceProfileId: 'phone-source',
+        legacyXp: 100,
+        achievements: [],
+        streaks: {},
+      },
+    ],
+  });
+  const sync = (db: LentaDB) =>
+    syncOnce(db, 'a', 'p', transport, undefined, date);
+  await phone.gameState.put(state);
+  await sync(phone);
+  await sync(pc);
+  expect((await pc.gameState.get('singleton'))?.xp).toBe(100);
+  for (const [id, db] of [
+    ['phone', phone],
+    ['pc', pc],
+  ] as const) {
+    await db.transaction('rw', db.gameState, db.xpEvents, async () => {
+      await db.xpEvents.put({
+        id,
+        amount: 20,
+        date,
+        reason: 'workout',
+        dedupeKey: 'workout:1',
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
+      await db.gameState.update('singleton', {
+        xp: 120,
+        unlockedAchievements: [{ key: id, unlockedAt: stamp }],
+      });
+    });
+  }
+  await sync(phone);
+  await expect(sync(pc)).rejects.toMatchObject({
+    code: 'sync_revision_conflict',
+  });
+  const version = (await pc.cloudVersions.get(['gameState', 'singleton']))!;
+  await resolveConflict(
+    pc,
+    'a',
+    'p',
+    'gameState',
+    'singleton',
+    version.conflict!.revision,
+    version.localHead,
+    'merge',
+    date,
+  );
+  await sync(pc);
+  await sync(phone);
+  for (const db of [phone, pc]) {
+    const progress = (await db.gameState.get('singleton'))!;
+    expect(progress.xp).toBe(120);
+    expect(
+      progress.unlockedAchievements.map((item) => item.key).sort(),
+    ).toEqual(['pc', 'phone']);
+    expect(await db.cloudOutbox.count()).toBe(0);
+  }
 });
 it('publishes a recipe only after its attachment and hydrates both on the other device', async () => {
   const files: FileTransport = {

@@ -7,7 +7,7 @@ export class SyncRequestError extends Error {
   constructor(
     public readonly status: number,
     public readonly retryAfter = 0,
-    public readonly code?: 'sync_revision_conflict',
+    public readonly code?: 'sync_revision_conflict' | 'sync_xp_award_conflict',
   ) {
     super(
       status === 401 || status === 403
@@ -62,12 +62,14 @@ export function createCloudRequest(fetcher: typeof fetch = fetch) {
     });
     if (!response.ok) {
       const hint = Number(response.headers.get('Retry-After'));
+      const category = response.headers.get('X-Sync-Error');
       throw new SyncRequestError(
         response.status,
         Number.isFinite(hint) ? Math.min(3600, Math.max(0, hint)) : 0,
         response.status === 409 &&
-          response.headers.get('X-Sync-Error') === 'sync_revision_conflict'
-          ? 'sync_revision_conflict'
+          (category === 'sync_revision_conflict' ||
+            category === 'sync_xp_award_conflict')
+          ? category
           : undefined,
       );
     }
