@@ -10,6 +10,11 @@ import type { FileTransport } from '../src/data/cloud/attachments';
 import type { GameState } from '../src/domain/model';
 import { loadCatalogRows } from '../src/data/seed/catalog-rows';
 import {
+  planCloudImport,
+  previewCloudMigration,
+} from '../src/data/cloud/migration-preview';
+import { runImportStep } from '../src/data/cloud/import-step';
+import {
   beginAttachment,
   putAttachmentChunk,
   finalizeAttachment,
@@ -55,6 +60,95 @@ const water = (id: string, ml = 250) => ({
   ml,
   createdAt: '2026-11-05T10:00:00.000Z',
   updatedAt: '2026-11-05T10:00:00.000Z',
+});
+it('resumes a planned import after a committed response is lost and the browser closes', async () => {
+  const stamp = '2026-11-05T10:00:00.000Z';
+  const text = JSON.stringify({
+    format: 'lenta-backup',
+    version: 1,
+    exportedAt: stamp,
+    profile: { id: 'phone-import-source', name: 'Fixture' },
+    tables: {
+      recipes: [
+        {
+          id: 'recipe',
+          name: 'Fixture',
+          components: [],
+          yieldGrams: 100,
+          servings: 1,
+          photoBlobId: 'photo',
+          isFavorite: false,
+          useCount: 0,
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      ],
+    },
+    blobs: [
+      {
+        id: 'photo',
+        mime: 'image/png',
+        data: btoa('fixture bytes'),
+        createdAt: stamp,
+      },
+    ],
+  });
+  const plan = await planCloudImport(
+    text,
+    (await previewCloudMigration(text)).fingerprint,
+  );
+  const profile = plan.targetProfileId;
+  fixture.sql
+    .prepare("INSERT INTO profiles VALUES ('a',?,'Fixture','a',1,0,0)")
+    .run(profile);
+  const files: FileTransport = {
+    begin: (input) => beginAttachment(fixture.db, 'a', profile, input),
+    put: (id, index, data) =>
+      putAttachmentChunk(fixture.db, 'a', profile, id, index, data),
+    finalize: (id) => finalizeAttachment(fixture.db, 'a', profile, id),
+    status: (id) => attachmentStatus(fixture.db, 'a', profile, id),
+    read: (id, index) =>
+      readAttachmentChunk(fixture.db, 'a', profile, id, index),
+  };
+  let loseResponse = true;
+  const sync: Pick<SyncTransport, 'push'> = {
+    async push(body) {
+      const changes = await commitSyncBatch(fixture.db, 'a', profile, body);
+      if (loseResponse) {
+        loseResponse = false;
+        throw new Error('lost response');
+      }
+      return { batchId: body.batchId, changes };
+    },
+  };
+  const name = 'import-workspace-fixture';
+  let workspace = new LentaDB(name);
+  try {
+    expect(await runImportStep(workspace, 'a', plan, { sync, files })).toEqual({
+      files: 1,
+      batches: 0,
+      done: false,
+    });
+    await expect(
+      runImportStep(workspace, 'a', plan, { sync, files }),
+    ).rejects.toThrow('lost response');
+    workspace.close();
+    workspace = new LentaDB(name);
+    expect(await runImportStep(workspace, 'a', plan, { sync, files })).toEqual({
+      files: 1,
+      batches: 1,
+      done: true,
+    });
+    const page = await pullSyncChanges(fixture.db, 'a', profile);
+    expect(page.changes.map((change) => change.type)).toEqual([
+      'recipes',
+      'gameState',
+    ]);
+    expect(await workspace.cloudState.get('link')).toBeUndefined();
+  } finally {
+    workspace.close();
+    await Dexie.delete(name);
+  }
 });
 it('sends only the catalog override and restores defaults after clearing it', async () => {
   const defaults = [...(await loadCatalogRows()).foods.values()][0]!;
