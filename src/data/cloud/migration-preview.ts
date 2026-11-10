@@ -1,15 +1,21 @@
-import { parseBackup } from '../backup';
-import { validReferences } from '../backupValidation';
+import { parseBackup, type BackupFile } from '../backup';
+import { EXPORTABLE_TABLES } from '../db/schema';
 import {
   isCatalogType,
   projectCloudEntity,
   validateCloudWireEntity,
+  validateCloudMutation,
+  type CloudMutation,
   type CloudEntityType,
 } from './schema';
 import { catalogWirePayload } from './catalog';
 import { loadCatalogRows, type CatalogRows } from '../seed/catalog-rows';
-import { legacyXpGap } from '../../domain/gamification/reconcile';
-import type { XpEvent } from '../../domain/model';
+import { createProgressBaseline } from '../../domain/gamification/cloud-progress';
+import type { GameState, XpEvent } from '../../domain/model';
+import { progressEnvelope } from './progress-wire';
+import { MAX_BATCH_BYTES, MAX_BATCH_MUTATIONS } from './limits';
+import type { PreparedBatch } from './prepare';
+import { entityReferences, hasRequiredReferences } from './references';
 
 export interface MigrationPreview {
   sourceProfileId: string;
@@ -25,6 +31,20 @@ export interface MigrationPreview {
   conservativeSyncReservationBytes: number;
   legacyXpGap: number;
   issues: { code: string; table?: string; id?: string }[];
+}
+
+interface ImportRecord {
+  type: CloudEntityType;
+  id: string;
+  value: Record<string, unknown>;
+}
+
+export interface CloudImportPlan {
+  preview: MigrationPreview;
+  targetProfileId: string;
+  profile: BackupFile['profile'];
+  files: BackupFile['blobs'];
+  batches: PreparedBatch['body'][];
 }
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -48,7 +68,10 @@ async function hash(bytes: Uint8Array): Promise<string> {
 export async function previewCloudMigration(
   text: string,
 ): Promise<MigrationPreview> {
-  const backup = parseBackup(text);
+  return inspectBackup(parseBackup(text)).then(({ preview }) => preview);
+}
+
+async function inspectBackup(backup: BackupFile) {
   const result: MigrationPreview = {
     sourceProfileId: backup.profile.id,
     fingerprint: '',
@@ -61,9 +84,7 @@ export async function previewCloudMigration(
     legacyXpGap: 0,
     issues: [],
   };
-  if (!validReferences(backup.tables as Record<string, unknown[]>))
-    result.issues.push({ code: 'missing_entity_reference' });
-  const projected: { type: string; id: string; value: unknown }[] = [];
+  const projected: ImportRecord[] = [];
   let catalog: CatalogRows | undefined;
   for (const [type, records] of Object.entries(backup.tables)) {
     if (type === 'meta') continue;
@@ -80,17 +101,25 @@ export async function previewCloudMigration(
       if (type === 'gameState') continue;
       try {
         let value = projectCloudEntity(type as CloudEntityType, row);
-        if (isCatalogType(type) && row.source === 'seed') {
+        if (isCatalogType(type)) {
           catalog ??= await loadCatalogRows();
-          value = catalogWirePayload(type, value, catalog);
-          if (
-            !Object.keys(value.values as object).length &&
-            !(value.removed as string[]).length
-          )
-            continue;
-          validateCloudWireEntity(type, value);
+          if (catalog[type].has(String(row.id)) !== (row.source === 'seed'))
+            throw new Error('invalid_catalog_identity');
+          if (row.source === 'seed') {
+            value = catalogWirePayload(type, value, catalog);
+            if (
+              !Object.keys(value.values as object).length &&
+              !(value.removed as string[]).length
+            )
+              continue;
+          }
         }
-        projected.push({ type, id: String(row.id), value });
+        validateCloudWireEntity(type, value);
+        projected.push({
+          type: type as CloudEntityType,
+          id: String(row.id),
+          value,
+        });
         result.projectedRecordBytes += new TextEncoder().encode(
           JSON.stringify(value),
         ).length;
@@ -103,13 +132,31 @@ export async function previewCloudMigration(
       }
     }
   }
-  const state = backup.tables.gameState?.[0] as { xp?: number } | undefined;
+  const state = (backup.tables.gameState?.[0] as GameState | undefined) ?? {
+    id: 'singleton',
+    xp: 0,
+    level: 1,
+    freezes: 0,
+    streaks: {},
+    unlockedAchievements: [],
+    updatedAt: '1970-01-01T00:00:00.000Z',
+  };
   try {
-    result.legacyXpGap = legacyXpGap(
-      state?.xp ?? 0,
+    const baseline = createProgressBaseline(
+      backup.profile.id,
+      state,
       (backup.tables.xpEvents ?? []) as XpEvent[],
     );
+    result.legacyXpGap = baseline.legacyXp;
     if (result.legacyXpGap) result.issues.push({ code: 'legacy_xp_review' });
+    const value = progressEnvelope(state, {
+      key: 'progress',
+      baselines: [baseline],
+    });
+    projected.push({ type: 'gameState', id: value.id, value });
+    result.projectedRecordBytes += new TextEncoder().encode(
+      JSON.stringify(value),
+    ).length;
   } catch {
     result.issues.push({ code: 'progress_history_conflict' });
   }
@@ -138,15 +185,26 @@ export async function previewCloudMigration(
       result.issues.push({ code: 'invalid_attachment_encoding', id: file.id });
     }
   }
+  const ids = new Set(
+    projected.map((row) => JSON.stringify([row.type, row.id])),
+  );
   const files = new Set(backup.blobs.map((file) => file.id));
-  for (const item of backup.tables.recipes ?? []) {
-    const row = item as Record<string, unknown>;
-    if (typeof row.photoBlobId === 'string' && !files.has(row.photoBlobId))
-      result.issues.push({
-        code: 'missing_attachment',
-        table: 'recipes',
-        id: String(row.id),
-      });
+  for (const row of projected) {
+    const issue = { table: row.type, id: row.id };
+    if (!hasRequiredReferences(row.type, row.value))
+      result.issues.push({ code: 'missing_entity_reference', ...issue });
+    for (const [type, id] of entityReferences(row.type, row.value)) {
+      if (type === 'blobs') {
+        if (!files.has(id))
+          result.issues.push({ code: 'missing_attachment', ...issue });
+      } else if (!ids.has(JSON.stringify([type, id]))) {
+        if (isCatalogType(type)) {
+          catalog ??= await loadCatalogRows();
+          if (catalog[type].has(id)) continue;
+        }
+        result.issues.push({ code: 'missing_entity_reference', ...issue });
+      }
+    }
   }
   if (result.reservedAttachmentBytes > 128 * 1024 * 1024)
     result.issues.push({ code: 'attachment_budget_exceeded' });
@@ -159,15 +217,92 @@ export async function previewCloudMigration(
     `${a.type}:${a.id}` < `${b.type}:${b.id}` ? -1 : 1,
   );
   result.attachments.sort((a, b) => (a.id < b.id ? -1 : 1));
+  const fileMetadata = new Map(
+    backup.blobs.map(({ id, mime, createdAt }) => [id, { mime, createdAt }]),
+  );
   result.fingerprint = await hash(
     new TextEncoder().encode(
       canonical({
         profileId: backup.profile.id,
         projected,
-        attachments: result.attachments,
-        progress: backup.tables.gameState ?? [],
+        attachments: result.attachments.map((file) => ({
+          ...file,
+          ...fileMetadata.get(file.id),
+        })),
       }),
     ),
   );
-  return result;
+  return { preview: result, projected };
+}
+
+/** Freeze the reviewed snapshot into retryable, reference-ordered requests. */
+export async function planCloudImport(
+  text: string,
+  reviewedFingerprint: string,
+): Promise<CloudImportPlan> {
+  const backup = parseBackup(text);
+  const { preview, projected } = await inspectBackup(backup);
+  if (reviewedFingerprint !== preview.fingerprint)
+    throw new Error('import_review_changed');
+  if (preview.issues.some((issue) => issue.code !== 'legacy_xp_review'))
+    throw new Error('import_review_has_blockers');
+  const encoder = new TextEncoder();
+  const sourceHash = await hash(encoder.encode(backup.profile.id));
+  const order = new Map<string, number>(
+    EXPORTABLE_TABLES.map((type, index) => [type, index]),
+  );
+  // XP events are available when the progress baseline becomes visible.
+  order.set('gameState', EXPORTABLE_TABLES.length);
+  projected.sort((a, b) => order.get(a.type)! - order.get(b.type)!);
+  const batches: PreparedBatch['body'][] = [];
+  const newBatch = (): PreparedBatch['body'] => ({
+    schemaVersion: 1,
+    batchId: `import:${preview.fingerprint}:${batches.length}`,
+    mutations: [],
+  });
+  let batch = newBatch();
+  let bytes = encoder.encode(JSON.stringify(batch)).length;
+  for (const [index, record] of projected.entries()) {
+    const mutation: CloudMutation = {
+      operationId: `import:${preview.fingerprint}:${index}`,
+      expectedRevision: 0,
+      type: record.type,
+      id: record.id,
+      payload: record.value,
+    };
+    validateCloudMutation(mutation);
+    const length = encoder.encode(JSON.stringify(mutation)).length;
+    if (
+      batch.mutations.length &&
+      (batch.mutations.length >= MAX_BATCH_MUTATIONS ||
+        bytes + length + 1 > MAX_BATCH_BYTES)
+    ) {
+      batches.push(batch);
+      batch = newBatch();
+      bytes = encoder.encode(JSON.stringify(batch)).length;
+    }
+    if (bytes + length > MAX_BATCH_BYTES)
+      throw new Error('import_record_too_large');
+    bytes += length + (batch.mutations.length ? 1 : 0);
+    batch.mutations.push(mutation);
+  }
+  if (batch.mutations.length) batches.push(batch);
+  return {
+    preview,
+    targetProfileId: `import-${sourceHash}`,
+    profile: {
+      id: backup.profile.id,
+      name: backup.profile.name,
+      ...(backup.profile.tint === 'a' || backup.profile.tint === 'b'
+        ? { tint: backup.profile.tint }
+        : {}),
+    },
+    files: backup.blobs.map(({ id, mime, data, createdAt }) => ({
+      id,
+      mime,
+      data,
+      createdAt,
+    })),
+    batches,
+  };
 }

@@ -148,3 +148,9 @@ Seeded foods and exercises share the exact versioned asset defaults used for fir
 The Worker dispatches profile sync, usage and attachment paths only after session validation and only when `CLOUD_SYNC_ENABLED` is explicitly `true`. The staging configuration leaves the flag absent. Staging proof with authenticated Worker bindings is still required before user activation.
 
 All 104 backend tests, app/backend types and changed-file lint passed. Catalog exchange was checked across two test databases, including an empty override restoring defaults. Both seed tests, all four backup-preview tests and three native Chrome storage scenarios passed.
+
+## Reviewed import request planning — 2026-11-10
+
+The phone-backup preview and import planner share the same projected records. Reference checks use the same extraction rules as the server and recognize shipped catalog IDs. The planner includes a reviewed XP baseline, includes file metadata in the fingerprint, rejects changed snapshots and blocking review findings, and assigns a stable target profile ID from the source identity. It orders parents before dependent records and XP events before the progress envelope. A reviewed snapshot yields stable operation and batch IDs with the normal 200-record and 256 KiB limits.
+
+All six migration tests, fifteen affected backend tests, both type checks and affected lint passed. Import session persistence, attachment/batch execution, publication verification and the import UI remain pending. Planning alone writes nothing to the server.

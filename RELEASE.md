@@ -64,3 +64,7 @@ Schema v3 is additive but older Dexie code declares version 2: do not roll front
 ## Staging streak correction — 2026-11-05 verification record
 
 Source d476b579ea06670f76708c982966526f79e3b901, Worker 752320d7-5011-4390-a627-dea89f3c1f83. Exact-source root PWA build, seven local and seven deployed workout/backup/RU-EN account/auth-cache scenarios passed. Live marker matches and anonymous protected requests return 401. Account-state scenarios use mocks; personal data was not linked. New catalog/acknowledgement/receive modules are subsequent local work, not part of this deployment.
+
+## Staging catalog and guarded sync dispatch — 2026-11-10
+
+Source 5e80ff97775a1e1b132a7cb07b25b005e7c473e2, Worker ad942a7a-c5e2-4db2-84c2-a2428449f76a. Verified the exact source marker, anonymous API denial and seven local plus seven deployed workout, backup and RU/EN account/auth-cache scenarios. Account-state tests use mocked responses. Migration 0008 is applied to staging and its XP rule passed the synthetic remote D1 checks. Keep CLOUD_SYNC_ENABLED absent until the authenticated sync gates in CLOUD_SYNC_PROTOCOL.md are met. The deployed account panel can sign in to staging. Personal migration and production activation are separate gates.
