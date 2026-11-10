@@ -68,3 +68,9 @@ Source d476b579ea06670f76708c982966526f79e3b901, Worker 752320d7-5011-4390-a627-
 ## Staging catalog and guarded sync dispatch — 2026-11-10
 
 Source 5e80ff97775a1e1b132a7cb07b25b005e7c473e2, Worker ad942a7a-c5e2-4db2-84c2-a2428449f76a. Verified the exact source marker, anonymous API denial and seven local plus seven deployed workout, backup and RU/EN account/auth-cache scenarios. Account-state tests use mocked responses. Migration 0008 is applied to staging and its XP rule passed the synthetic remote D1 checks. Keep CLOUD_SYNC_ENABLED absent until the authenticated sync gates in CLOUD_SYNC_PROTOCOL.md are met. The deployed account panel can sign in to staging. Personal migration and production activation are separate gates.
+
+## Staging fresh profile pilot — 2026-11-10
+
+Source ce9d7cd41c342aebc5af5d3de7883824aaf07e50, Worker 927c2898-bd9b-4092-8c9d-5955f7812b1c. `CLOUD_SYNC_ENABLED=true` is set only on the existing staging target. Exact-source root build and marker, 278 app tests, 105 backend tests, four native storage scenarios, both type checks and affected lint passed. Anonymous sync, usage and attachment requests returned 401. A real signed-in in-app browser reached the cloud profile form. The browser-to-browser create/write/offline/reconnect flow was verified with an isolated SQL-backed fixture. Actual phone/PC confirmation and separate production activation are pending. Pavel selected a fresh start, so the old history import is no longer a personal cutover gate.
+
+All seven local and all seven deployed workout, backup and RU/EN account/auth-cache regression scenarios passed. The automated account scenarios mock session state. The real in-app check verified sign-in and profile listing but made no profile or diary writes.
