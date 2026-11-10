@@ -866,6 +866,15 @@ export function createRepositories(profileId: string): Repositories {
 
   return {
     profileId,
+    async finishOnboarding(profile, date, weightKg, targets) {
+      await db.transaction('rw', db.profile, db.body, db.settings, db.cloudState, async () => {
+        if ((await db.settings.get('singleton'))?.onboardingDone) return;
+        const link = await db.cloudState.get('link');
+        await makeProfileRepo(db).save(link ? { ...profile, id: link.profileId } : profile);
+        await makeBodyRepo(db).create({ date, weightKg });
+        await makeSettingsRepo(db).update({ targets, onboardingDone: true });
+      });
+    },
     profile: makeProfileRepo(db),
     settings: makeSettingsRepo(db),
     foods: makeFoodRepo(db),

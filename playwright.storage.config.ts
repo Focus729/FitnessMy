@@ -12,6 +12,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'npx vite --host 127.0.0.1 --port 4175',
+    env: { VITE_CLOUD_ENABLED: 'true' },
     url: 'http://127.0.0.1:4175',
     reuseExistingServer: false,
   },

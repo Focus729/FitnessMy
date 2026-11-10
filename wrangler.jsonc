@@ -9,7 +9,8 @@
   "vars": {
     "APP_ORIGIN": "https://fitnessmy-staging.hpavel729.workers.dev",
     "GITHUB_CLIENT_ID": "Ov23lian1Br93mfhk8vm",
-    "ALLOWED_GITHUB_ID": "43194562"
+    "ALLOWED_GITHUB_ID": "43194562",
+    "CLOUD_SYNC_ENABLED": "true"
   },
   "d1_databases": [
     {

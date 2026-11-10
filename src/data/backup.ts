@@ -197,8 +197,9 @@ export async function applyImport(
   file: BackupFile,
   mode: 'replace' | 'merge',
 ): Promise<ImportPreview> {
-  const preview = await previewImport(profileId, file, mode);
   const db = openDb(profileId);
+  if (await db.cloudState.get('link')) throw new Error('cloud_backup_restore_unavailable');
+  const preview = await previewImport(profileId, file, mode);
   // Convert blobs before opening a transaction; decoding failure cannot clear data.
   const blobs = file.blobs.map((b) => ({
     ...b,
@@ -216,8 +217,9 @@ export async function applyImport(
 
   await db.transaction(
     'rw',
-    [...EXPORTABLE_TABLES.map((name) => db.table(name)), db.blobs],
+    [...EXPORTABLE_TABLES.map((name) => db.table(name)), db.blobs, db.cloudState],
     async () => {
+      if (await db.cloudState.get('link')) throw new Error('cloud_backup_restore_unavailable');
       const effective: Record<string, unknown[]> = {};
       for (const name of EXPORTABLE_TABLES) {
         const incoming = (file.tables[name] ?? []) as Versioned[];

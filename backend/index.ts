@@ -44,7 +44,11 @@ export default {
       if (request.method !== 'GET')
         return json({ error: 'method_not_allowed' }, 405);
       if (path === '/api/session')
-        return json({ authenticated: true, accountId: identity.accountId });
+        return json({
+          authenticated: true,
+          accountId: identity.accountId,
+          syncEnabled: env.CLOUD_SYNC_ENABLED === 'true',
+        });
       if (path === '/api/health') {
         const row = await env
           .DB!.prepare('SELECT 1 AS ready')

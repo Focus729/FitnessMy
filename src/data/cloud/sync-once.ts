@@ -21,7 +21,7 @@ export async function syncOnce(
   transport: SyncTransport,
   fileTransport?: FileTransport,
   evaluationDate?: string,
-): Promise<void> {
+): Promise<{ pullComplete: boolean }> {
   let pushError: unknown;
   if (fileTransport)
     await uploadFirstTransactionFiles(db, accountId, profileId, fileTransport);
@@ -115,8 +115,9 @@ export async function syncOnce(
     );
     if (page.done) {
       if (pushError) throw pushError;
-      return;
+      return { pullComplete: true };
     }
   }
   if (pushError) throw pushError;
+  return { pullComplete: false };
 }

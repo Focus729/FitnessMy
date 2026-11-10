@@ -55,6 +55,8 @@ export function SettingsScreen() {
   const { t } = useTranslation();
   const settings = useSettings();
   const update = useUpdateSettings();
+  const profileId = useSession((state) => state.activeProfileId);
+  const cloud = profileId && getProfileRef(profileId)?.cloud;
 
   return (
     <div className="space-y-6 pb-8">
@@ -161,7 +163,7 @@ export function SettingsScreen() {
       <AISection />
 
       <Section title={t('settings.sections.about')}>
-        <p className="text-body text-muted">{t('settings.aboutBody')}</p>
+        <p className="text-body text-muted">{t(cloud ? 'cloud.aboutBody' : 'settings.aboutBody')}</p>
         <p className="text-caption text-muted">{t('settings.aboutMedical')}</p>
         <Label>{t('settings.attribution')}</Label>
         <ul className="space-y-1 text-caption text-muted">
@@ -457,8 +459,8 @@ function DataSection() {
 
   return (
     <Section title={t('settings.sections.data')}>
-      <p className="text-body text-muted">{t('settings.dataWhatBody')}</p>
-      <p className="text-caption text-muted">{t('settings.deviceStorageHint')}</p>
+      <p className="text-body text-muted">{t(ref?.cloud ? 'cloud.storageBody' : 'settings.dataWhatBody')}</p>
+      <p className="text-caption text-muted">{t(ref?.cloud ? 'cloud.storageRisk' : 'settings.deviceStorageHint')}</p>
       {dataError ? <p role="alert">{t('errors.saveFailed')}</p> : null}
       {recovery ? (
         <Button onClick={() => downloadBackup(recovery, `${recovery.profile.name}-recovery`)}>
@@ -512,12 +514,13 @@ function DataSection() {
         <Button full onClick={() => void doExport().catch(() => setDataError(true))}>
           {t('settings.exportBackup')}
         </Button>
-        <Button full onClick={() => setImportOpen(true)}>
+        <Button full onClick={() => setImportOpen(true)} disabled={Boolean(ref?.cloud)}>
           {t('settings.importBackup')}
         </Button>
       </div>
 
-      <GoogleDriveBlock />
+      <GoogleDriveBlock allowRestore={!ref?.cloud} />
+      {ref?.cloud && <p className="text-caption text-muted">{t('cloud.localRestoreOnly')}</p>}
 
       <Field label={t('profiles.pinSet')}>
         <div className="flex gap-2">
@@ -544,9 +547,9 @@ function DataSection() {
         <p className="mt-1 text-caption text-muted">{t('profiles.pinDisclaimer')}</p>
       </Field>
 
-      <Button variant="danger" full onClick={() => setDeleteOpen(true)}>
+      {!ref?.cloud && <Button variant="danger" full onClick={() => setDeleteOpen(true)}>
         {t('settings.deleteAll')}
-      </Button>
+      </Button>}
 
       <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
 
@@ -701,7 +704,7 @@ function ImportSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
   );
 }
 
-function GoogleDriveBlock() {
+function GoogleDriveBlock({ allowRestore }: { allowRestore: boolean }) {
   const { t } = useTranslation();
   const settings = useSettings();
   const update = useUpdateSettings();
@@ -807,7 +810,7 @@ function GoogleDriveBlock() {
         </Button>
         <Button
           full
-          disabled={!clientId.trim()}
+          disabled={!clientId.trim() || !allowRestore}
           onClick={() =>
             void authorize(clientId)
               .then(listBackups)

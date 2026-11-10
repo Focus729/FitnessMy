@@ -194,6 +194,7 @@ export interface MetaRepo {
 /** Полный набор репозиториев профиля. */
 export interface Repositories {
   profileId: string;
+  finishOnboarding(profile: Parameters<ProfileRepo['save']>[0], date: LocalDate, weightKg: number, targets: Settings['targets']): Promise<void>;
   profile: ProfileRepo;
   settings: SettingsRepo;
   foods: FoodRepo;

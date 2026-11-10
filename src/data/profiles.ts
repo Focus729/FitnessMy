@@ -21,6 +21,7 @@ export interface ProfileRef {
   tint: 'a' | 'b';
   pinHash?: string;
   createdAt: string;
+  cloud?: { accountId: string; profileId: string };
 }
 
 export function listProfiles(): ProfileRef[] {
@@ -50,6 +51,19 @@ export function createProfile(name: string): ProfileRef {
   return ref;
 }
 
+/** Register a separate device workspace for an owned cloud profile. */
+export function registerCloudProfile(ref: ProfileRef & { cloud: NonNullable<ProfileRef['cloud']> }): void {
+  const list = listProfiles();
+  const previous = list.find((profile) => profile.id === ref.id);
+  if (previous && (
+    previous.cloud?.accountId !== ref.cloud.accountId ||
+    previous.cloud.profileId !== ref.cloud.profileId
+  )) throw new Error('cloud_workspace_changed');
+  save(previous
+    ? list.map((profile) => profile.id === ref.id ? { ...previous, ...ref } : profile)
+    : [...list, ref]);
+}
+
 export function renameProfile(id: string, name: string): void {
   save(listProfiles().map((p) => (p.id === id ? { ...p, name } : p)));
 }
@@ -64,6 +78,7 @@ export function removeProfile(id: string): void {
  * Живёт в слое data — интерфейсу схема Dexie недоступна (правило 2.9).
  */
 export async function destroyProfile(id: string): Promise<void> {
+  if (getProfileRef(id)?.cloud) throw new Error('cloud_profile_delete_unavailable');
   await deleteDb(id);
   await recoveryDb.snapshots.delete(id);
   localStorage.removeItem(`lenta.backupSnoozeUntil.${id}`);

@@ -1,21 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/design-system/primitives';
+import { CloudProfiles } from './CloudProfiles';
+import { CLOUD_LOGOUT_EVENT } from '@/data/cloud/workspace';
 
 type AccountState = 'loading' | 'signedIn' | 'signedOut' | 'unavailable';
 
-/** Authentication controls only. Local profiles are not implicitly uploaded or linked. */
 export function CloudAccount() {
   const { t } = useTranslation();
   const [state, setState] = useState<AccountState>('loading');
   const [attempt, setAttempt] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [syncAccount, setSyncAccount] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
     let alive = true;
     setState('loading');
+    setSyncAccount(null);
     void fetch('/api/session', {
       cache: 'no-store',
       credentials: 'same-origin',
@@ -26,6 +30,9 @@ export function CloudAccount() {
         if (!response.ok) throw new Error();
         const data = (await response.json()) as { authenticated?: boolean };
         if (data.authenticated !== true) throw new Error();
+        if (alive && 'syncEnabled' in data && data.syncEnabled === true &&
+          'accountId' in data && typeof data.accountId === 'string')
+          setSyncAccount(data.accountId);
         return 'signedIn' as const;
       })
       .then((next) => {
@@ -52,6 +59,8 @@ export function CloudAccount() {
         signal: AbortSignal.timeout(10000),
       });
       if (!response.ok) throw new Error();
+      localStorage.setItem(CLOUD_LOGOUT_EVENT, String(Date.now()));
+      setSyncAccount(null);
       setState('signedOut');
     } catch {
       setLogoutError(true);
@@ -78,9 +87,12 @@ export function CloudAccount() {
         </Button>
       )}
       {state === 'signedIn' && (
-        <Button full onClick={() => void logout()} disabled={leaving}>
-          {t(leaving ? 'cloud.signingOut' : 'cloud.signOut')}
-        </Button>
+        <>
+          {syncAccount && <CloudProfiles accountId={syncAccount} onBusy={setProfileBusy} />}
+          <Button full onClick={() => void logout()} disabled={leaving || profileBusy}>
+            {t(leaving ? 'cloud.signingOut' : 'cloud.signOut')}
+          </Button>
+        </>
       )}
       {state === 'unavailable' && (
         <Button full onClick={() => setAttempt((value) => value + 1)}>
@@ -92,7 +104,7 @@ export function CloudAccount() {
           {t('cloud.logoutError')}
         </p>
       )}
-      <p className="text-caption text-muted">{t('cloud.localNotice')}</p>
+      <p className="text-caption text-muted">{t(syncAccount ? 'cloud.separateProfiles' : 'cloud.localNotice')}</p>
     </section>
   );
 }

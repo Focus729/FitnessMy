@@ -43,12 +43,14 @@ export function Onboarding() {
   const repos = useRepos();
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
+  const ref = getProfileRef(repos.profileId);
+  const [finishError, setFinishError] = useState(false);
 
   const [step, setStep] = useState(1);
   const [personalConfirmed, setPersonalConfirmed] = useState(false);
   const [persistGranted, setPersistGranted] = useState<boolean | null>(null);
   const [draft, setDraft] = useState<Draft>({
-    name: getProfileRef(repos.profileId)?.name ?? '',
+    name: ref?.name ?? '',
     sex: 'male',
     birthDate: '1990-01-01',
     heightCm: 175,
@@ -84,7 +86,7 @@ export function Onboarding() {
   const finish = async (kcalOverride?: number) => {
     if (!calc || draft.weightKg === '' || draft.heightCm === '') return;
 
-    await repos.profile.save({
+    const profile = {
       id: '',
       name: draft.name || t('profiles.me'),
       sex: draft.sex,
@@ -94,16 +96,14 @@ export function Onboarding() {
       goal: draft.goal,
       goalRatePerWeekKg: draft.goal === 'lose' ? -draft.ratePerWeek : draft.ratePerWeek,
       ...(draft.bodyFatPct === '' ? {} : { bodyFatPct: draft.bodyFatPct }),
-    });
-
-    await repos.body.create({ date: today(), weightKg: draft.weightKg });
+    };
 
     const targets = { ...calc.targets };
     if (kcalOverride != null && kcalOverride !== targets.kcal) {
       targets.kcal = kcalOverride;
       targets.mode = 'manual';
     }
-    await updateSettings({ targets, onboardingDone: true });
+    await repos.finishOnboarding(profile, today(), draft.weightKg, targets);
   };
 
   const canGoNext =
@@ -268,8 +268,8 @@ export function Onboarding() {
 
         {step === 6 ? (
           <Step title={t('onboarding.storageTitle')}>
-            <p className="text-body">{t('onboarding.storageBody')}</p>
-            <p className="mt-3 text-body text-muted">{t('onboarding.storageRisk')}</p>
+            <p className="text-body">{t(ref?.cloud ? 'cloud.storageBody' : 'onboarding.storageBody')}</p>
+            <p className="mt-3 text-body text-muted">{t(ref?.cloud ? 'cloud.storageRisk' : 'onboarding.storageRisk')}</p>
             <p className="mt-4 text-section">{t('onboarding.storageActions')}</p>
             <ol className="mt-2 space-y-3">
               <li>
@@ -298,7 +298,13 @@ export function Onboarding() {
         ) : null}
 
         {step === 7 && calc ? (
-          <TargetsReview calc={calc} draft={draft} onConfirm={(kcal) => void finish(kcal)} />
+          <>
+            <TargetsReview calc={calc} draft={draft} onConfirm={(kcal) => {
+              setFinishError(false);
+              void finish(kcal).catch(() => setFinishError(true));
+            }} />
+            {finishError && <p role="alert" className="mt-3 text-caption text-over">{t('errors.saveFailed')}</p>}
+          </>
         ) : null}
       </div>
 

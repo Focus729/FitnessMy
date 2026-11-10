@@ -23,6 +23,7 @@ export function ProfileGate() {
   }, []);
 
   const pending = activeProfileId ? profiles.find((p) => p.id === activeProfileId) : undefined;
+  const localProfiles = profiles.filter((profile) => !profile.cloud);
 
   if (pending?.pinHash) {
     const submit = async () => {
@@ -80,7 +81,7 @@ export function ProfileGate() {
       {import.meta.env.VITE_CLOUD_ENABLED === 'true' && <CloudAccount />}
 
       <ul className="mt-6 w-full space-y-2">
-        {profiles.map((p) => (
+        {localProfiles.map((p) => (
           <li key={p.id}>
             <button
               type="button"
@@ -110,7 +111,7 @@ export function ProfileGate() {
             {t('profiles.create')}
           </Button>
         </div>
-        {profiles.length === 0 ? (
+        {localProfiles.length === 0 ? (
           <div className="flex gap-2">
             <Button
               full

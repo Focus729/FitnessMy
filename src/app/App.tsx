@@ -9,6 +9,7 @@ import { getProfileRef } from '@/data/profiles';
 import { applyTheme, useSession } from './store';
 import { AppShell } from './AppShell';
 import { ProfileGate } from '@/screens/ProfileGate';
+import { CloudWorkspaceGate } from '@/components/CloudWorkspaceGate';
 import { TodayScreen } from '@/screens/Today';
 import { useSettings } from './hooks';
 
@@ -48,11 +49,15 @@ export function App() {
 
   if (!activeProfileId || !unlocked) return <ProfileGate />;
 
-  return (
+  const workspace = (
     <RepositoriesProvider key={activeProfileId} profileId={activeProfileId}>
       <ProfileScope profileId={activeProfileId} />
     </RepositoriesProvider>
   );
+  const cloud = getProfileRef(activeProfileId)?.cloud;
+  return cloud
+    ? <CloudWorkspaceGate key={activeProfileId} id={activeProfileId} {...cloud}>{workspace}</CloudWorkspaceGate>
+    : workspace;
 }
 
 function ProfileScope({ profileId }: { profileId: string }) {

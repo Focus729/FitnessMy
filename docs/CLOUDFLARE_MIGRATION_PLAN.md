@@ -122,6 +122,8 @@ Inspected affected code and release facts; verified official hosting, auth and s
 
 ### CF-M7 — Personal data cutover and Pages retirement
 
+Pavel chose a fresh cloud profile on 2026-11-10. For this cutover, replace the personal export and import in steps 1–3 with creating a fresh profile, opening it on phone and PC, and verifying a new entry plus offline reconnect. Keep the old origin available until this fresh profile passes both-device verification. The generic backup planning work remains available for future development.
+
 - **T10 (CF-05,09,11)**: execute the sequence below and record evidence. Expected: Pavel's history is usable on Cloudflare from phone and PC; old hosting is disabled only when data is safe. State: Planned.
 
 1. Keep the old origin available. Explain a brief editing freeze during export/import. Export each relevant local profile from each browser/device containing unique history; keep copies outside the public repository. The new origin cannot read the old origin's IndexedDB/localStorage.
