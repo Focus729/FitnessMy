@@ -1,6 +1,12 @@
 # Cloudflare hosting and cross-device profile plan
 
-Date: 2026-11-02. Status: explicitly approved by Pavel on 2026-11-02; CF-M1 started.
+Approved by Pavel on 2026-11-02. Production activation verified on 2026-11-11.
+
+## Cutover status — 2026-11-11
+
+- The [production site](https://fitnessmy.hpavel729.workers.dev/) is live. The deployed revision, anonymous API denial and real GitHub sign-in were verified. See [release evidence](../RELEASE.md#production-cloudflare-activation--2026-11-11).
+- Pavel confirmed phone-to-PC water synchronization on staging. Production uses a separate D1 database and starts with a fresh profile by Pavel's choice.
+- Confirm a fresh entry on the phone and PC at the production address before disabling Pages. Automated service-worker offline recovery passed. Physical-device installation and offline relaunch still need confirmation.
 
 ## Outcome and decisions
 
