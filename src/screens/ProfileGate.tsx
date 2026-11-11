@@ -6,14 +6,17 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createProfile, verifyPin } from '@/data/profiles';
+import { createProfile, verifyPin, type ProfileRef } from '@/data/profiles';
 import { useSession, applyTheme } from '@/app/store';
+import { useOnline } from '@/app/hooks';
 import { Button, TextField } from '@/design-system/primitives';
 import { CloudAccount } from '@/components/CloudAccount';
+import { hasOfflineAccess } from '@/data/cloud/device-access';
 
 export function ProfileGate() {
   const { t } = useTranslation();
   const { profiles, activeProfileId, select, unlock, refresh, leave } = useSession();
+  const online = useOnline();
   const [newName, setNewName] = useState('');
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState(false);
@@ -78,7 +81,12 @@ export function ProfileGate() {
     <Centered>
       <h1 className="text-title">{t('profiles.title')}</h1>
       <p className="mt-1 text-caption text-muted">{t('profiles.subtitle')}</p>
-      {import.meta.env.VITE_CLOUD_ENABLED === 'true' && <CloudAccount />}
+      {import.meta.env.VITE_CLOUD_ENABLED === 'true' &&
+        (online ? (
+          <CloudAccount />
+        ) : (
+          <OfflineCloudProfiles profiles={profiles} onSelect={select} />
+        ))}
 
       <ul className="mt-6 w-full space-y-2">
         {localProfiles.map((p) => (
@@ -135,6 +143,65 @@ export function ProfileGate() {
         ) : null}
       </div>
     </Centered>
+  );
+}
+
+function OfflineCloudProfiles({
+  profiles,
+  onSelect,
+}: {
+  profiles: ProfileRef[];
+  onSelect: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [trusted, setTrusted] = useState<ProfileRef[] | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    void Promise.all(
+      profiles.map(async (profile) => {
+        const { id, cloud } = profile;
+        if (!cloud) return null;
+        const allowed = await hasOfflineAccess({ id, ...cloud }).catch(() => false);
+        return allowed ? profile : null;
+      }),
+    ).then((matches) => {
+      if (current) setTrusted(matches.filter((profile) => profile !== null));
+    });
+    return () => {
+      current = false;
+    };
+  }, [profiles]);
+
+  return (
+    <section
+      className="card mt-6 w-full space-y-3 p-4"
+      aria-label={t('cloud.title')}
+    >
+      <h2 className="text-section">{t('cloud.title')}</h2>
+      {trusted === null && (
+        <p role="status" className="text-caption text-muted">
+          {t('cloud.profilesLoading')}
+        </p>
+      )}
+      {trusted?.length === 0 && (
+        <p role="status" className="text-caption text-muted">
+          {t('cloud.offlineAccessRequired')}
+        </p>
+      )}
+      {!!trusted?.length && (
+        <>
+          <p className="text-caption text-muted">{t('cloud.offlineProfiles')}</p>
+          <ul className="space-y-2">
+            {trusted.map(({ id, name }) => (
+              <li key={id}>
+                <Button full onClick={() => onSelect(id)}>{name}</Button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }
 

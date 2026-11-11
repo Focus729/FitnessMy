@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
 import { completeOnboarding } from './helpers';
 import { testDatabase } from '../backend/test-database';
 import worker from '../backend/index';
@@ -9,11 +9,13 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
   baseURL,
 }) => {
   const context = await browser.newContext({
+    ...devices['Pixel 7'],
     baseURL,
     locale: 'ru-RU',
     serviceWorkers: 'allow',
   });
   const fixture = testDatabase();
+  let disconnected = false;
   try {
     const origin = 'https://fixture.example';
     const token = await hashToken('offline-browser-fixture');
@@ -26,6 +28,10 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
         0,
       );
     await context.route('**/api/**', async (route) => {
+      if (disconnected) {
+        await route.abort('internetdisconnected');
+        return;
+      }
       const incoming = route.request();
       const url = new URL(incoming.url());
       const headers = new Headers(await incoming.allHeaders());
@@ -86,8 +92,16 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
     await expect(
       page.getByText('Синхронизировано', { exact: true }),
     ).toBeVisible();
+    disconnected = true;
     await context.setOffline(true);
     expect((await page.reload())?.status()).toBe(200);
+    await page.getByRole('button', { name: 'Сменить профиль: Fixture' }).click();
+    expect((await page.reload())?.status()).toBe(200);
+    await expect(
+      page.getByText('Профили, доступные без сети на этом устройстве.'),
+    ).toBeVisible();
+    await expect(picker).toBeVisible();
+    await picker.click();
     const water = page
       .locator('section')
       .filter({
@@ -104,6 +118,7 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
         )
         .get()?.n,
     ).toBe(0);
+    disconnected = false;
     await context.setOffline(false);
     await expect
       .poll(
@@ -115,6 +130,31 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
             .get()?.n,
       )
       .toBe(1);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+    await page.getByRole('button', { name: 'English', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch profile: Fixture' }).waitFor();
+    disconnected = true;
+    await context.setOffline(true);
+    await page.getByRole('button', { name: 'Switch profile: Fixture' }).click();
+    await expect(
+      page.getByText('Profiles available offline on this device.'),
+    ).toBeVisible();
+    await picker.click();
+    disconnected = false;
+    await context.setOffline(false);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Turn off offline access on this device' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Enable offline access on this device' }),
+    ).toBeVisible();
+    disconnected = true;
+    await context.setOffline(true);
+    await page.getByRole('button', { name: 'Switch profile: Fixture' }).click();
+    await expect(
+      page.getByText('Connect to the internet to open this profile. You can enable offline access in Settings.'),
+    ).toBeVisible();
+    await expect(picker).toHaveCount(0);
   } finally {
     await context.close();
     fixture.sql.close();

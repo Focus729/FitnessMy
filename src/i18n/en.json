@@ -14,6 +14,7 @@
     "logoutCopyHint": "Signing out clears this account's copy and device settings from this browser.",
     "backupReminder": "Download a separate backup of your cloud profile. It includes entries still waiting to sync.",
     "offlineAccessRequired": "Connect to the internet to open this profile. You can enable offline access in Settings.",
+    "offlineProfiles": "Profiles available offline on this device.",
     "enableOfflineAccess": "Enable offline access on this device",
     "disableOfflineAccess": "Turn off offline access on this device",
     "offlineAccessHint": "Use this on a device you control. A copy stays in this browser and can be opened without an internet connection.",
