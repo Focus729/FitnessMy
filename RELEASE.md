@@ -88,3 +88,11 @@ Source 0d5e51f76e9358d727f0df6b27a1fed4bda4582c, Worker 168d50e0-1a4f-461c-8b19-
 Staging revision 9b382820306c21837f7dc5aecf5a643261227f8b, Worker aa1772fb-63c2-4c7e-a666-770c71373463. The live marker and anonymous session/profile denial passed. The root build passed seven affected browser scenarios, including an offline reload of a trusted cloud profile from the service worker cache and a successful sync on reconnection. The native storage test also verified that sign-out preserves pending edits and clears the synchronized local copy after session revocation.
 
 The checked artifact was uploaded to the isolated production Worker as version 5e9567ff-43f3-4ee4-b93f-800c1141c080. Both workers.dev and preview routing are disabled on that Worker. Configure the exact production GitHub callback and install the secret on the production Worker before enabling workers.dev.
+
+## Production Cloudflare activation — 2026-11-11
+
+Production URL https://fitnessmy.hpavel729.workers.dev serves source `008be1b8b2d3942ff035ad5a7d029201c7f5108a` and Worker `ffd37b2b-0ab6-4608-9a8a-67b58b064aa1`. This release uses the isolated `fitnessmy` D1 and the exact production GitHub callback on the existing OAuth application. The Worker requires its own encrypted `GITHUB_CLIENT_SECRET`. Preview URLs are disabled.
+
+The full cloud gate passed on `cdec794`, including 105 backend tests, 278 app tests, four native storage scenarios and 30 built-app scenarios. After enabling the production route and secret requirement, the activation commit passed the root build and a fresh dry run. Production returned the checked marker and manifest, denied anonymous API access and completed a real GitHub sign-in. The profile form loaded from the authenticated production API. Pavel's phone-to-PC verification on this address is pending before retiring Pages.
+
+For future checked Cloudflare releases, run `npm run check:release:cloud` on the committed source. The root build uses `APP_BASE_PATH=/`, `VITE_CLOUD_ENABLED=true` and `BUILD_REVISION` set to the source commit. Deploy the verified artifact using `node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.production.jsonc`, then verify `/build-info.json`, anonymous API denial and signed-in access. GitHub pushes do not deploy the Worker.

@@ -1,10 +1,20 @@
 # Lenta
 
+## FitnessMy on Cloudflare
+
+Open [FitnessMy](https://fitnessmy.hpavel729.workers.dev/) on your phone and PC. Sign in with the same authorized GitHub account. Create a cloud profile on one device, then select it on the other. Cloud profiles use Cloudflare Workers and a dedicated D1 database. The GitHub repository remains the source of the application.
+
+To open a cloud profile offline, first open it online. Enable offline access in Settings on each device you trust. Entries made offline sync after you reconnect. Use Settings to export a separate backup when needed. A local-only profile uses browser storage and has its own backup flow.
+
+Use [RELEASE.md](RELEASE.md) for staging and production publication. Run `npm run check:release:cloud` to verify the cloud release locally.
+
 ## Training companion redesign
 
 The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Verification results and evidence limits are recorded in the plan. Published on 2026-10-31 at https://focus729.github.io/FitnessMy/; release evidence is in [REDESIGN_VERIFICATION.md](docs/audit/REDESIGN_VERIFICATION.md).
 
-Use [RELEASE.md](RELEASE.md) for the existing GitHub Pages target, production-path build and sequential checks. `npm run check:release` checks the local increment without deploying it. Dependency exposure is documented in [SECURITY_REVIEW.md](docs/audit/SECURITY_REVIEW.md).
+Dependency exposure is documented in [SECURITY_REVIEW.md](docs/audit/SECURITY_REVIEW.md).
+
+## Local-only edition
 
 Личное офлайн-первое PWA для питания, тренировок и здоровья. На двоих.
 Сервера нет, рекламы нет, подписок нет, аналитики нет. Данные лежат только
