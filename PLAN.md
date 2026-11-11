@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Home-screen shortcut (2026-11-11): use `FitnessMy` in the web app manifest, browser title, and Apple home-screen title. Generate the shortcut icons from the Today glyph, with an adaptive Android variant and a dedicated 180 px Apple icon. Keep the existing install origin and scope.
+- Home-screen shortcut (2026-11-11): production `7c1675f` uses `FitnessMy` in the web app manifest, browser title, and Apple home-screen title. The shortcut uses the Today glyph, with an adaptive Android variant and a dedicated 180 px Apple icon. The complete Cloudflare release gate passed. The live revision, install metadata, image responses and sign-in screen passed in mobile and desktop Chromium. The phone launcher itself was not tested.
 - Objective: move application hosting from GitHub Pages to Cloudflare and provide one private account with the same profile/history on phone and PC while preserving offline logging.
 - Personal cutover decision (2026-11-10): Pavel chose a fresh cloud profile. The personal backup/export/import gate is superseded. No legacy records were imported.
 - Approval scope: on 2026-11-02 Pavel approved the complete Cloudflare plan and subsequently approved replacing Access email OTP with GitHub OAuth for Focus729 only. Workers Static Assets + D1, offline sync, no payment card/no paid services, and staged Pages retirement remain approved. OAuth app/secret creation and transfer only to Cloudflare Worker secrets were explicitly authorized.

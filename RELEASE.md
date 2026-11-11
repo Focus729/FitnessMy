@@ -1,5 +1,7 @@
 # Release procedure
 
+The 2026-11-11 shortcut branding release is live at source `7c1675fe7d998cdddcb9173310e89c9d52be2c77`, Worker `67a773f3-f544-4f53-87f3-e97289d07456`. The full Cloudflare release gate passed. The production marker matched, and Chromium confirmed the title, install metadata and PNG responses in mobile Russian and desktop English contexts. The phone launcher was not tested.
+
 The production target is [FitnessMy on Cloudflare](https://fitnessmy.hpavel729.workers.dev/). Use the [Cloudflare release procedure](#production-cloudflare-activation--2026-11-11) and [cutover record](#personal-cutover--2026-11-11). Earlier entries describe the migration and the retired Pages deployment.
 
 ## Planned hosting transition (2026-11-02)
