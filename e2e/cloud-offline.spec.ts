@@ -132,7 +132,7 @@ test('a trusted cloud profile opens from the installed app cache and queues an o
       .toBe(1);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('button', { name: 'Настройки', exact: true }).click();
-    await page.getByRole('button', { name: 'English', exact: true }).click();
+    await page.getByRole('radio', { name: 'English', exact: true }).click();
     await page.getByRole('button', { name: 'Switch profile: Fixture' }).waitFor();
     disconnected = true;
     await context.setOffline(true);
