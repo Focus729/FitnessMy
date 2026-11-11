@@ -3,9 +3,10 @@
   "name": "fitnessmy",
   "main": "backend/index.ts",
   "compatibility_date": "2026-11-02",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "send_metrics": false,
+  "secrets": { "required": ["GITHUB_CLIENT_SECRET"] },
   "vars": {
     "APP_ORIGIN": "https://fitnessmy.hpavel729.workers.dev",
     "ALLOWED_GITHUB_ID": "43194562",
