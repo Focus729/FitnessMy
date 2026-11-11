@@ -15,59 +15,33 @@ import { deflateSync, crc32 } from 'node:zlib';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = resolve(root, 'public/icons');
 
-const INK = [20, 23, 28];
-const PAPER = [245, 246, 248];
-const ACCENT = [43, 63, 240];
+const BACKGROUND = [43, 63, 240];
+const WHITE = [255, 255, 255];
 
-/** Точки на ленте: доля ширины и радиус в долях размера. */
-const MARKS = [
-  { x: 0.3, r: 0.055 },
-  { x: 0.45, r: 0.085 },
-  { x: 0.62, r: 0.07 },
-  { x: 0.78, r: 0.045 },
-];
+// Match the Today icon: a rounded horizontal line and one ring at its centre.
+const HALF_LINE = 9;
+const RING_RADIUS = 3;
+const HALF_STROKE = 1.1;
 
 function renderIcon(size, maskable) {
-  // Маскируемая иконка держит содержимое в безопасной зоне 80%.
-  const inset = maskable ? size * 0.1 : 0;
-  const inner = size - inset * 2;
+  // The adaptive mark fits in the central circle with a radius of 40%.
+  const scale = (size / 24) * (maskable ? 0.8 : 1);
   const pixels = new Uint8Array(size * size * 3);
 
-  const put = (x, y, color) => {
-    if (x < 0 || y < 0 || x >= size || y >= size) return;
-    const i = (y * size + x) * 3;
-    pixels[i] = color[0];
-    pixels[i + 1] = color[1];
-    pixels[i + 2] = color[2];
-  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x + 0.5 - size / 2) / scale;
+      const dy = (y + 0.5 - size / 2) / scale;
+      const line = Math.hypot(Math.max(0, Math.abs(dx) - HALF_LINE), dy);
+      const ring = Math.abs(Math.hypot(dx, dy) - RING_RADIUS);
+      const distance = Math.min(line, ring) - HALF_STROKE;
+      const coverage = Math.max(0, Math.min(1, 0.5 - distance * scale));
+      const offset = (y * size + x) * 3;
 
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) put(x, y, PAPER);
-
-  // Ось суток
-  const axisY = Math.round(size / 2);
-  const axisFrom = Math.round(inset + inner * 0.12);
-  const axisTo = Math.round(inset + inner * 0.88);
-  const axisThickness = Math.max(1, Math.round(size * 0.012));
-  for (let t = 0; t < axisThickness; t++) {
-    for (let x = axisFrom; x <= axisTo; x++) put(x, axisY + t, INK);
-  }
-
-  // Заливка окна питания — акцентом
-  const windowFrom = Math.round(inset + inner * 0.28);
-  const windowTo = Math.round(inset + inner * 0.8);
-  const windowH = Math.max(2, Math.round(size * 0.03));
-  for (let y = axisY - windowH; y < axisY; y++) {
-    for (let x = windowFrom; x <= windowTo; x++) put(x, y, ACCENT);
-  }
-
-  // Отметки приёмов пищи
-  for (const mark of MARKS) {
-    const cx = inset + inner * mark.x;
-    const cy = axisY;
-    const r = size * mark.r;
-    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
-      for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) put(x, y, INK);
+      for (let channel = 0; channel < 3; channel++) {
+        pixels[offset + channel] = Math.round(
+          BACKGROUND[channel] * (1 - coverage) + WHITE[channel] * coverage,
+        );
       }
     }
   }
@@ -106,20 +80,16 @@ function png(size, pixels) {
   ]);
 }
 
-const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#F5F6F8"/>
-  <rect x="18" y="28" width="34" height="3" rx="1" fill="#2B3FF0" opacity="0.45"/>
-  <rect x="8" y="32" width="48" height="1.5" fill="#14171C"/>
-  <circle cx="20" cy="32" r="3" fill="#14171C"/>
-  <circle cx="30" cy="32" r="5" fill="#14171C"/>
-  <circle cx="42" cy="32" r="4" fill="#14171C"/>
-  <circle cx="52" cy="32" r="2.5" fill="#14171C"/>
+const FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <rect width="24" height="24" rx="5" fill="#2B3FF0"/>
+  <path d="M3 12h18M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
 </svg>
 `;
 
 async function run() {
   await mkdir(outDir, { recursive: true });
   const variants = [
+    { size: 180, maskable: false, file: 'apple-touch-icon.png' },
     { size: 192, maskable: false, file: 'icon-192.png' },
     { size: 512, maskable: false, file: 'icon-512.png' },
     { size: 512, maskable: true, file: 'icon-512-maskable.png' },

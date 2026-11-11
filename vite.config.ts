@@ -52,9 +52,9 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg', 'fonts/*.woff2'],
       manifest: {
-        name: 'Lenta',
-        short_name: 'Lenta',
-        description: 'Питание, тренировки и здоровье. Данные только на вашем устройстве.',
+        name: 'FitnessMy',
+        short_name: 'FitnessMy',
+        description: 'Личный дневник питания, тренировок и здоровья.',
         theme_color: '#F5F6F8',
         background_color: '#F5F6F8',
         display: 'standalone',
