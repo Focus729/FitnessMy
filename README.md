@@ -8,9 +8,11 @@ To open a cloud profile offline, first open it online. Enable offline access in 
 
 Use [RELEASE.md](RELEASE.md) for staging and production publication. Run `npm run check:release:cloud` to verify the cloud release locally.
 
+GitHub Pages publishing is disabled. If you installed the old app from GitHub Pages, open the Cloudflare address and install it from there to use your cloud profile.
+
 ## Training companion redesign
 
-The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Verification results and evidence limits are recorded in the plan. Published on 2026-10-31 at https://focus729.github.io/FitnessMy/; release evidence is in [REDESIGN_VERIFICATION.md](docs/audit/REDESIGN_VERIFICATION.md).
+The approved direction B and all 24 audit requirements are tracked in [PLAN.md](PLAN.md), with visual decisions in [DESIGN.md](DESIGN.md). Today now prioritizes an active or planned workout, with direct food/body actions; the responsive desktop rail and phone tabs replace the historical fixed five-block layout. Verification results and evidence limits are recorded in the plan. Evidence from the October 2026 redesign release is in [REDESIGN_VERIFICATION.md](docs/audit/REDESIGN_VERIFICATION.md).
 
 Dependency exposure is documented in [SECURITY_REVIEW.md](docs/audit/SECURITY_REVIEW.md).
 

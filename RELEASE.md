@@ -1,5 +1,7 @@
 # Release procedure
 
+The production target is [FitnessMy on Cloudflare](https://fitnessmy.hpavel729.workers.dev/). Use the [Cloudflare release procedure](#production-cloudflare-activation--2026-11-11) and [cutover record](#personal-cutover--2026-11-11). Earlier entries describe the migration and the retired Pages deployment.
+
 ## Planned hosting transition (2026-11-02)
 
 Pavel approved the complete [Cloudflare migration plan](docs/CLOUDFLARE_MIGRATION_PLAN.md) on 2026-11-02. The procedures below describe the currently deployed site, not the future target. Pages remains active until old-origin data is exported, imported and verified on the new origin. The new release procedure will use Workers Static Assets + D1 at root `/`, isolated staging/production resources and a fail-closed checked-artifact deploy command with Git auto-deploy disabled. Preserve the source repository and deployment history.
@@ -93,6 +95,10 @@ The checked artifact was uploaded to the isolated production Worker as version 5
 
 Production URL https://fitnessmy.hpavel729.workers.dev serves source `008be1b8b2d3942ff035ad5a7d029201c7f5108a` and Worker `ffd37b2b-0ab6-4608-9a8a-67b58b064aa1`. This release uses the isolated `fitnessmy` D1 and the exact production GitHub callback on the existing OAuth application. The Worker requires its own encrypted `GITHUB_CLIENT_SECRET`. Preview URLs are disabled.
 
-The full cloud gate passed on `cdec794`, including 105 backend tests, 278 app tests, four native storage scenarios and 30 built-app scenarios. After enabling the production route and secret requirement, the activation commit passed the root build and a fresh dry run. Production returned the checked marker and manifest, denied anonymous API access and completed a real GitHub sign-in. The profile form loaded from the authenticated production API. Pavel's phone-to-PC verification on this address is pending before retiring Pages.
+The full cloud gate passed on `cdec794`, including 105 backend tests, 278 app tests, four native storage scenarios and 30 built-app scenarios. After enabling the production route and secret requirement, the activation commit passed the root build and a fresh dry run. Production returned the checked marker and manifest, denied anonymous API access and completed a real GitHub sign-in. The profile form loaded from the authenticated production API.
 
 For future checked Cloudflare releases, run `npm run check:release:cloud` on the committed source. The root build uses `APP_BASE_PATH=/`, `VITE_CLOUD_ENABLED=true` and `BUILD_REVISION` set to the source commit. Deploy the verified artifact using `node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.production.jsonc`, then verify `/build-info.json`, anonymous API denial and signed-in access. GitHub pushes do not deploy the Worker.
+
+## Personal cutover — 2026-11-11
+
+Pavel confirmed that a water entry added to his new production profile on the phone appeared on his PC. He chose to start fresh, so no legacy history was imported. After that verification, GitHub Pages Settings saved `None` as the source branch. The old root URL returned HTTP 404 after the edge cache expired. The public repository and both `master` and `gh-pages` branches remain available. The latter retains the old static artifact for recovery. Re-enabling that branch in Pages would serve the legacy app on its old origin. Cloudflare production returned HTTP 200, the build marker still matched and anonymous profile access returned HTTP 401. Physical-device PWA installation and offline restart remain open verification items.

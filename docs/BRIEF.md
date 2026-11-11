@@ -1,16 +1,16 @@
 # Cross-device profile discovery
 
-Date: 2026-11-02; continuation 2026-11-03. Status: Pavel approved the complete [implementation plan](CLOUDFLARE_MIGRATION_PLAN.md) and its amendment to GitHub login, with no card and free-only resources. CF-M1 is in progress. The completed redesign remains recorded in PLAN.md.
+Approved on 2026-11-02. Pavel confirmed production synchronization from phone to PC on 2026-11-11. The [implementation plan](CLOUDFLARE_MIGRATION_PLAN.md) records current verification and release status.
 
 ## Confirmed context
 
 - Pavel wants to open the same personal profile from phone and PC.
 - Existing profiles live in localStorage; each profile has a separate Dexie database. The local PIN is not server authentication or encryption.
 - Google Drive currently stores backup snapshots, not synchronized records.
-- Preserve existing history, direction B, Russian/English, phone/desktop layouts, and existing export/recovery behavior.
+- Preserve direction B, Russian/English, phone/desktop layouts, and existing export/recovery behavior. Pavel chose a fresh production profile on 2026-11-10.
 - No paid service is authorized.
-- Cloudflare will host the frontend and backend; GitHub Pages will be retired only after verified data migration. Keep the GitHub source repository.
-- Access is currently for Pavel alone. FitnessMy will use GitHub OAuth restricted to Focus729's immutable user ID. Cloudflare Zero Trust/Access is excluded because its onboarding requires payment details.
+- [Cloudflare](https://fitnessmy.hpavel729.workers.dev/) hosts the frontend and backend. GitHub Pages publishing was disabled after the new profile synchronized between devices. The GitHub source repository and Pages branch were retained.
+- Access is for Pavel alone. FitnessMy uses GitHub OAuth restricted to Focus729's immutable user ID. Cloudflare Zero Trust/Access is excluded because its onboarding requires payment details.
 
 ## Proposed requirements
 
