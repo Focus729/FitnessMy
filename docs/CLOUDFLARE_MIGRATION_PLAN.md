@@ -6,7 +6,8 @@ Approved by Pavel on 2026-11-02. Production activation verified on 2026-11-11.
 
 - The [production site](https://fitnessmy.hpavel729.workers.dev/) is live. The deployed revision, anonymous API denial and real GitHub sign-in were verified. See [release evidence](../RELEASE.md#production-cloudflare-activation--2026-11-11).
 - Pavel confirmed phone-to-PC water synchronization on staging. Production uses a separate D1 database and starts with a fresh profile by Pavel's choice.
-- Pavel confirmed that a fresh water entry added on his phone appeared on his PC at the production address. GitHub Pages publishing was then disabled by saving `None` as the source branch. Automated service-worker offline recovery passed. Physical-device installation and offline relaunch still need confirmation.
+- Pavel confirmed that a fresh water entry added on his phone appeared on his PC at the production address. GitHub Pages publishing was then disabled by saving `None` as the source branch. The old address returned HTTP 404. The online cutover is complete.
+- Automated offline recovery passed. The installed phone app still failed to open the profile in airplane mode. Pavel removed offline use from his cutover requirements on 2026-11-11.
 
 ## Outcome and decisions
 
@@ -130,7 +131,7 @@ Inspected affected code and release facts; verified official hosting, auth and s
 
 Pavel chose a fresh cloud profile on 2026-11-10. For this cutover, replace the personal export and import in steps 1–3 with creating a fresh profile, opening it on phone and PC, and verifying a new entry plus offline reconnect. Keep the old origin available until this fresh profile passes both-device verification. The generic backup planning work remains available for future development.
 
-- **T10 (CF-05,09,11)**: Pavel created a fresh production profile and confirmed synchronization from phone to PC on 2026-11-11. Pages publishing was disabled and the deployment branch retained. Physical-device installation and offline reconnect still need verification. The original sequence below documents the legacy-history workflow.
+- **T10 (CF-05,09,11)**: complete for the confirmed online scope. Pavel created a fresh production profile and confirmed synchronization from phone to PC on 2026-11-11. Pages publishing was disabled and the deployment branch retained. The original sequence below documents the legacy-history workflow.
 
 1. Keep the old origin available. Explain a brief editing freeze during export/import. Export each relevant local profile from each browser/device containing unique history; keep copies outside the public repository. The new origin cannot read the old origin's IndexedDB/localStorage.
 2. Sign in on Cloudflare, preview and import into explicitly selected account-owned profiles. Resolve overlapping histories deliberately. Compare record counts, key dates, totals, references and attachment hashes. Repeated imports must be harmless.
