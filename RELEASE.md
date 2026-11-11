@@ -82,3 +82,9 @@ Pavel confirmed the trial entry created on the phone appeared on PC. Production 
 ## Staging conflict comparison and production preflight — 2026-11-10
 
 Source 0d5e51f76e9358d727f0df6b27a1fed4bda4582c, Worker 168d50e0-1a4f-461c-8b19-a6d3603f0ede. The full clean Cloudflare release gate passed: 278 app tests, 105 backend tests, 4 native storage scenarios, 29 built-app scenarios, contrast/spec checks and production-config dry run. The failure-injection check verified that a failed step stops subsequent commands. Staging was deployed from the checked artifact and the live marker matched. The comparison UI passed a two-context test using real IndexedDB and the SQL-backed Worker dispatch, with 320 px and 1440 px rendered inspection. Production publication remains pending.
+
+## Trusted device release and production setup — 2026-11-11
+
+Staging revision 9b382820306c21837f7dc5aecf5a643261227f8b, Worker aa1772fb-63c2-4c7e-a666-770c71373463. The live marker and anonymous session/profile denial passed. The root build passed seven affected browser scenarios, including an offline reload of a trusted cloud profile from the service worker cache and a successful sync on reconnection. The native storage test also verified that sign-out preserves pending edits and clears the synchronized local copy after session revocation.
+
+The checked artifact was uploaded to the isolated production Worker as version 5e9567ff-43f3-4ee4-b93f-800c1141c080. Both workers.dev and preview routing are disabled on that Worker. Configure the exact production GitHub callback and install the secret on the production Worker before enabling workers.dev.
