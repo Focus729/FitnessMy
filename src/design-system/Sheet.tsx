@@ -159,7 +159,7 @@ export function Sheet({ open, onClose, title, children, footer, dirty, onSave }:
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       <div
-        className="absolute inset-0 bg-ink/30 animate-fadeIn"
+        className="sheet-scrim absolute inset-0 animate-fadeIn"
         onClick={requestClose}
         aria-hidden="true"
       />

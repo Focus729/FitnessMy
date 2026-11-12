@@ -66,5 +66,5 @@ export function applyTheme(theme: 'light' | 'dark' | 'system', tint: 'a' | 'b' =
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
   document
     .querySelectorAll('meta[name="theme-color"]')
-    .forEach((m) => m.setAttribute('content', dark ? '#0E1013' : '#F5F6F8'));
+    .forEach((m) => m.setAttribute('content', dark ? '#090D17' : '#F5F7FC'));
 }

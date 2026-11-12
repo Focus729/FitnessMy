@@ -51,3 +51,20 @@ The static preview is a selected direction reference, not a pixel-perfect specif
 ## Design acceptance before release
 
 Review 320/390/768/1440 widths, both languages, both themes, both profile accents, and realistic empty/loading/error/populated states. Test keyboard focus, mobile keyboard overlap, long food/exercise names, large numbers, offline resume, and navigation back to edited records. Static concept previews do not satisfy these release checks.
+
+## Cyberpunk-inspired redesign
+
+Pavel requested stronger panel separation, more feedback on actions, and a Cyberpunk 2077 visual direction. Use the game's high-contrast HUD palette and angular panel geometry as reference for an original FitnessMy theme. [CD PROJEKT RED reference](https://www.cyberpunk.net/ch/en/cyberpunk-2077).
+
+Two alternatives are available in the [interactive comparison](docs/audit/cyberpunk-menu-preview.html). Pavel approved A, Yellow HUD, on 2026-11-12.
+
+- **A. Yellow HUD, selected.** Graphite base `#090D17` with cyan and violet ambient gradients. Raised panels run from `#142431` to `#10121F`. Primary and selected controls run from acid yellow `#FFF268` to amber `#FFB43E`. Cyan `#62E2EC` marks metrics and focus.
+- **B. Magenta HUD.** Violet base `#110C19` with magenta and blue ambient gradients. Panels run from `#32192F` to `#13172C`. Selection runs from magenta `#FF80BE` to coral `#FFB083`. Turquoise `#75F4E4` marks metrics and inner panel edges.
+
+Use Unbounded 700 for page titles, menu headings and the FitnessMy wordmark. Use bundled Manrope for labels and body text, and IBM Plex Mono for numbers and short meal labels. The app and prototype share local Cyrillic and Latin WOFF2 subsets and the OFL license. Keep sentence case in longer labels, an 8 px spacing scale and at least 44 px touch targets. Verify contrast at both ends of gradients in dark and light variants. [Unbounded font metadata](https://github.com/google/fonts/blob/main/ofl/unbounded/METADATA.pb).
+
+On desktop, the left rail anchors navigation. Show the three menu frames side by side below one shared nutrition summary. On phone, use a three-button selector above one menu frame. Keep the surrounding navigation accessible, preserve scroll and keyboard focus on updates, and show selection by border, control state and text. Use a compact meal summary on Today and the full comparison in Food. Respect existing light and system preferences.
+
+Use short, user-triggered motion. Proposed timings are 90–120 ms for button press, 160–220 ms for view and menu selection, and 180–240 ms for sheets and save feedback. Use opacity and small transforms with stable space for content. Animate changed meal rows when recomputation finishes. Provide static equivalents for reduced motion and keep feedback visible without animation.
+
+See the [implementation plan](docs/CYBERPUNK_REDESIGN_PLAN.md) for the sequence and acceptance checks. The existing training-first layout continues to govern Today.

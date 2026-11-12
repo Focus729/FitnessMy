@@ -24,6 +24,7 @@ export function useHermesMeal(
   prompt: string,
 ) {
   const [result, setResult] = useState<{
+    profile: string;
     prompt: string;
     text?: string;
     unavailable?: boolean;
@@ -53,9 +54,9 @@ export function useHermesMeal(
       const poll = async (job: { status?: string; result?: string }) => {
         if (signal.aborted) return;
         if (job.status === "ready" && typeof job.result === "string") {
-          setResult({ prompt, text: job.result });
+          setResult({ profile: profile!, prompt, text: job.result });
         } else if (job.status !== "pending" || checks++ >= 32) {
-          setResult({ prompt, unavailable: true });
+          setResult({ profile: profile!, prompt, unavailable: true });
         } else {
           timer = setTimeout(() => {
             void mealBridgeRequest(profile!, path, options)
@@ -67,7 +68,7 @@ export function useHermesMeal(
       await poll(queued);
     }
     const failed = () => {
-      if (!signal.aborted) setResult({ prompt, unavailable: true });
+      if (!signal.aborted) setResult({ profile, prompt, unavailable: true });
     };
     timer = setTimeout(() => void run().catch(failed), 1200);
     return () => {
@@ -76,7 +77,7 @@ export function useHermesMeal(
     };
   }, [paired, profile, prompt, purpose]);
   return paired && prompt
-    ? result?.prompt === prompt
+    ? result?.profile === profile && result?.prompt === prompt
       ? result
       : { prompt }
     : undefined;

@@ -2,7 +2,7 @@
  * Оболочка: пять вкладок снизу (18.5), индикатор офлайна (19.1),
  * неблокирующая плашка обновления (19.1) и напоминание о копии (2.3).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useOnline, useSettings, useUpdateSettings } from './hooks';
@@ -38,12 +38,21 @@ export function AppShell({ seeded }: { seeded: boolean }) {
   const { t } = useTranslation();
   const online = useOnline();
   const location = useLocation();
+  const main = useRef<HTMLElement>(null);
   const navigate = useNavigate();
   const repos = useRepos();
   const settings = useSettings();
   const updateSettings = useUpdateSettings();
   const { activeProfileId, leave } = useSession();
   const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const animation = main.current?.animate?.([{ opacity: 0.72 }, { opacity: 1 }], {
+      duration: 190,
+      easing: 'ease-out',
+    });
+    return () => animation?.cancel();
+  }, [location.pathname]);
   const routeKey = `lenta.tabRoutes.${activeProfileId}`;
   const [tabQueries, setTabQueries] = useState<Record<string, string>>(() => {
     try {
@@ -99,11 +108,14 @@ export function AppShell({ seeded }: { seeded: boolean }) {
         {/* Имя профиля всегда видно — раздел 23 */}
         <button
           type="button"
-          className="tappable flex-1 gap-2 text-label text-muted"
+          className="tappable min-w-0 flex-1 gap-2 text-left text-label text-muted"
           onClick={leave}
           aria-label={`${t('profiles.switch')}: ${profileName}`}
         >
-          {profileName} <span aria-hidden="true">▾</span>
+          <span className="min-w-0">
+            <span className="app-wordmark">FitnessMy</span>
+            <span className="block truncate">{profileName} <span aria-hidden="true">▾</span></span>
+          </span>
         </button>
         {
           <button
@@ -117,7 +129,7 @@ export function AppShell({ seeded }: { seeded: boolean }) {
         }
       </header>
 
-      <main className="app-main flex-1 px-4 pb-28">
+      <main ref={main} className="app-main flex-1 px-4 pb-28">
         <Outlet />
       </main>
 

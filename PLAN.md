@@ -2,6 +2,8 @@
 
 ## Current State
 
+- Menu variety and interface redesign (2026-11-12): Pavel approved A, Yellow HUD. The [approved plan](docs/CYBERPUNK_REDESIGN_PLAN.md) covers three distinct menu options, shared visual frames and motion, menu ranking through the existing Hermes bridge and a checked Cloudflare release. Implemented locally; release verification is in progress.
+
 - Adaptive meal recommendations (2026-11-12): [direct Hermes integration](docs/ADAPTIVE_MEAL_PLAN.md) is live in production `8e40bb2`. Pavel authorized the scoped data flow for his production profile. The encrypted bridge key and Windows logon task were installed. Staging passed the full synthetic D1 → bridge → Hermes → D1 cycle, and the signed-in production browser displayed the resulting Hermes menu. [Bridge setup](docs/HERMES_MEAL_BRIDGE.md).
 - Home-screen shortcut (2026-11-11): production `7c1675f` uses `FitnessMy` in the web app manifest, browser title, and Apple home-screen title. The shortcut uses the Today glyph, with an adaptive Android variant and a dedicated 180 px Apple icon. The complete Cloudflare release gate passed. The live revision, install metadata, image responses and sign-in screen passed in mobile and desktop Chromium. The phone launcher itself was not tested.
 - Objective: move application hosting from GitHub Pages to Cloudflare and provide one private account with the same profile/history on phone and PC while preserving offline logging.

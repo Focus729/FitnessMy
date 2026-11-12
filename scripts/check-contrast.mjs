@@ -75,27 +75,47 @@ function ratio(a, b) {
 async function run() {
   const css = await readFile(resolve(root, 'src/design-system/tokens.css'), 'utf8');
   const themes = parseThemes(css);
+  const hud = await readFile(resolve(root, 'src/design-system/cyberpunk.css'), 'utf8');
+  const valueOf = (name) => hud.match(new RegExp(`${name}:\\s*([^;]*#)[^;]*;`))?.[0] ?? '';
+  const hex = (value) => value.match(/#[\da-f]{6}/gi) ?? [];
+  const alternatives = (name, theme) =>
+    [...valueOf(name).matchAll(/light-dark\((#[\da-f]{6}),\s*(#[\da-f]{6})\)/gi)]
+      .map((match) => match[theme === 'light' ? 1 : 2]);
 
   const rows = [];
   let failures = 0;
+  const addRow = (theme, what, pair, foreground, background, min) => {
+    if (!foreground || !background) throw new Error(`Missing contrast color: ${theme} ${pair}`);
+    const value = ratio(foreground, background);
+    const ok = value >= min;
+    if (!ok) failures++;
+    rows.push({ theme, what, pair, value: value.toFixed(2), min: min.toFixed(1), ok });
+  };
 
   for (const theme of Object.keys(themes)) {
     for (const [fg, bg, min, what] of PAIRS) {
       const fgHex = themes[theme][fg];
       const bgHex = themes[theme][bg];
       if (!fgHex || !bgHex) throw new Error(`Missing contrast token: ${theme} ${fg} ${bg}`);
-      const value = ratio(fgHex, bgHex);
-      const ok = value >= min;
-      if (!ok) failures++;
-      rows.push({
-        theme,
-        what,
-        pair: `${fg} на ${bg}`,
-        value: value.toFixed(2),
-        min: min.toFixed(1),
-        ok,
-      });
+      addRow(theme, what, `${fg} на ${bg}`, fgHex, bgHex, min);
     }
+  }
+  for (const theme of ['light', 'dark']) {
+    const backgrounds = ['--hud-shell', '--hud-panel', '--hud-deep']
+      .flatMap((token) => alternatives(token, theme));
+    if (backgrounds.length !== 7) throw new Error(`Missing HUD surfaces: ${theme}`);
+    for (const token of ['--ink', '--muted', '--hud-signal', '--over', '--good']) {
+      const foreground = alternatives(token, theme)[0] ?? themes[theme][token];
+      for (const background of backgrounds) {
+        addRow(theme, 'HUD surface', `${token} / ${background}`, foreground, background, 4.5);
+      }
+    }
+  }
+  const stops = hex(valueOf('--hud-yellow'));
+  if (stops.length !== 2) throw new Error('Missing HUD button gradient');
+  for (const background of stops) {
+    addRow('HUD', 'Selected control', `--hud-yellow-ink / ${background}`,
+      hex(valueOf('--hud-yellow-ink'))[0], background, 4.5);
   }
 
   const table = [

@@ -46,7 +46,8 @@ export function Button({
   return (
     <button
       type="button"
-      className={`${base} ${variants[variant]} ${full ? 'w-full' : ''} ${className}`}
+      data-variant={variant}
+      className={`hud-button ${base} ${variants[variant]} ${full ? 'w-full' : ''} ${className}`}
       {...props}
     />
   );
@@ -216,7 +217,7 @@ export function Segmented<T extends string | number>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`flex gap-1 rounded-xl border border-hairline p-1 ${
+      className={`hud-segments flex gap-1 rounded-xl border border-hairline p-1 ${
         scrollable ? 'flex-wrap' : 'flex-wrap sm:flex-nowrap'
       }`}
     >
@@ -229,7 +230,7 @@ export function Segmented<T extends string | number>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className={`min-h-touch rounded-lg px-2 text-caption font-semibold transition-colors ${
+            className={`hud-button min-h-touch rounded-lg px-2 text-caption font-semibold transition-colors ${
               scrollable ? 'flex-1 px-3' : 'flex-1'
             } ${active ? 'bg-ink text-paper' : 'text-muted'}`}
           >
@@ -587,7 +588,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <section className={`rounded-2xl bg-surface-1 p-4 ${className}`}>
+    <section className={`hud-block rounded-2xl bg-surface-1 p-4 ${className}`}>
       {title ? <SectionHeader title={title} hint={hint} action={action} /> : null}
       {children}
     </section>

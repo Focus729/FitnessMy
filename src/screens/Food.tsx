@@ -65,6 +65,7 @@ function Diary() {
   const repos = useRepos();
   const settings = useSettings();
   const [date, setDate] = useRouteState('date', todayFn());
+  const [menu] = useRouteState('menu', '0', ['0', '1']);
   const [addSlot, setAddSlot] = useState<string | null>(null);
   const [indexOpen, setIndexOpen] = useState(false);
   const [substancesOpen, setSubstancesOpen] = useState(false);
@@ -152,7 +153,7 @@ function Diary() {
         </div>
       </button>
 
-      <AdaptiveMeals key={date} date={date} />
+      <AdaptiveMeals key={`${date}:${menu}`} date={date} defaultOpen={menu === '1'} />
 
       <ul className="space-y-3">
         {visibleSlots.map((slot) => {
