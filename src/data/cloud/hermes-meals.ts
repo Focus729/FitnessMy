@@ -22,7 +22,7 @@ export function useHermesMeal(
   paired: boolean,
   purpose: "plan" | "review",
   prompt: string,
-) {
+): { prompt: string; text?: string; unavailable?: boolean } | undefined {
   const [result, setResult] = useState<{
     profile: string;
     prompt: string;
