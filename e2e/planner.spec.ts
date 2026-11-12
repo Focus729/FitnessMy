@@ -41,6 +41,8 @@ test('weekly menu and shopping checks survive reload without duplicate diary row
     });
   });
   await page.goto('/#/food?section=planner&week=2026-10-19');
+  // The fixture writes directly to IndexedDB. Reload before using Dexie's query cache.
+  await page.reload();
   for (let index = 0; index < 3; index++)
     await page.getByRole('button', { name: '+1', exact: true }).click();
   await page.getByRole('button', { name: 'Разложить неделю', exact: true }).click();
