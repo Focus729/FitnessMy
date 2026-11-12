@@ -1,6 +1,8 @@
 # Adaptive meal recommendations
 
-Draft for Pavel's review, 2026-11-12. Scope is product and technical planning. The proposed first release needs no additional provider or API spend. Implementation and provider activation are pending.
+Pavel approved implementation and authorized the production Hermes connection on 2026-11-12. The daily menu and direct Hermes bridge are live. Release evidence is in [RELEASE.md](../RELEASE.md).
+
+The current release uses the existing diary's device-local date and keeps skipped slots on each device. It includes confirmation and portion adjustment for suggested meals. Model-generated edits to existing diary entries and a shared planning timezone remain follow-up work. Physical phone-to-PC testing of the new menu and validation after a Windows restart remain pending.
 
 ## User flow
 

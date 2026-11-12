@@ -8,3 +8,5 @@ The bridge runs on the PC that hosts Hermes. It claims meal recommendation jobs 
 4. Open Today or Food and log a test meal. The calculated plan is available immediately. The model may choose among the offered options. FitnessMy recomputes the displayed totals and requires confirmation before logging a portion.
 
 Keep bridge keys out of Git, browser history and logs. The runner checks the reported Hermes API toolsets before inference. It uses a local in-process cap of 60 model requests per UTC day, with bounded poll intervals, leases and retries. Model recommendations pause when the bridge, Hermes or its provider is unavailable. The diary and calculated plan remain available.
+
+Pavel's production PC was paired on 2026-11-12. The `FitnessMy Hermes Bridge` Windows logon task was installed and observed running. The local runner uses the Windows user credential store to decrypt the pairing key. Restart behavior has yet to be tested.
