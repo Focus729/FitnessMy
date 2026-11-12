@@ -16,6 +16,7 @@ import { Bar, Button, MetricValue, Panel, Ring } from '@/design-system/primitive
 import { Ribbon, RibbonScale } from '@/design-system/Ribbon';
 import { WaterSheet } from '@/components/WaterSheet';
 import { AddFoodSheet } from '@/components/AddFoodSheet';
+import { AdaptiveMeals } from '@/components/AdaptiveMeals';
 
 export function TodayScreen() {
   const { t } = useTranslation();
@@ -115,6 +116,7 @@ export function TodayScreen() {
             {t(unfinished ? 'common.continue' : nextPlan ? 'today.startWorkout' : 'gym.startEmpty')}
           </Button>
           <Button onClick={() => setAddOpen(true)}>{t('today.addFood')}</Button>
+          <AdaptiveMeals date={date} compact />
           <Button variant="ghost" onClick={() => navigate('/body?section=weight')}>
             {t('body.weightAdd')}
           </Button>

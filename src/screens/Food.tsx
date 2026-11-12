@@ -21,6 +21,7 @@ import { DishEditorSheet } from '@/components/DishEditorSheet';
 import { RecipeEditorSheet } from '@/components/RecipeEditorSheet';
 import { PlannerPanel } from '@/components/PlannerPanel';
 import { DiaryEditorSheet } from '@/components/DiaryEditorSheet';
+import { AdaptiveMeals } from '@/components/AdaptiveMeals';
 
 const EMPTY_ENTRIES: DiaryEntry[] = [];
 
@@ -150,6 +151,8 @@ function Diary() {
           {t('food.indexTitle')}
         </div>
       </button>
+
+      <AdaptiveMeals key={date} date={date} />
 
       <ul className="space-y-3">
         {visibleSlots.map((slot) => {

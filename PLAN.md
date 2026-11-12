@@ -2,6 +2,7 @@
 
 ## Current State
 
+- Adaptive meal recommendations (2026-11-12): Pavel approved implementation of the [direct Hermes plan](docs/ADAPTIVE_MEAL_PLAN.md). Daily catalog planning, in-app portion confirmation, evening review, and the opt-in Worker bridge are implemented. A dedicated local Hermes profile returned a synthetic response through the existing provider with no API toolsets enabled. Staging and production verification are pending. [Bridge setup](docs/HERMES_MEAL_BRIDGE.md).
 - Home-screen shortcut (2026-11-11): production `7c1675f` uses `FitnessMy` in the web app manifest, browser title, and Apple home-screen title. The shortcut uses the Today glyph, with an adaptive Android variant and a dedicated 180 px Apple icon. The complete Cloudflare release gate passed. The live revision, install metadata, image responses and sign-in screen passed in mobile and desktop Chromium. The phone launcher itself was not tested.
 - Objective: move application hosting from GitHub Pages to Cloudflare and provide one private account with the same profile/history on phone and PC while preserving offline logging.
 - Personal cutover decision (2026-11-10): Pavel chose a fresh cloud profile. The personal backup/export/import gate is superseded. No legacy records were imported.

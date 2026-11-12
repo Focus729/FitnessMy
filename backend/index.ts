@@ -3,10 +3,12 @@ import { HttpError, json } from './http';
 import { profilesApi } from './profiles';
 import { syncApi } from './sync-api';
 import { attachmentApi } from './attachment-api';
+import { hermesBridge, hermesMeals } from './hermes-meals';
 
 interface Env extends GithubConfig {
   ASSETS: { fetch(request: Request): Promise<Response> };
   CLOUD_SYNC_ENABLED?: string;
+  HERMES_MEALS_ENABLED?: string;
 }
 
 export default {
@@ -17,7 +19,16 @@ export default {
     if (!api && !auth) return env.ASSETS.fetch(request);
     try {
       if (auth) return await githubAuth(request, env);
+      if (env.HERMES_MEALS_ENABLED === 'true' &&
+          (path === '/api/hermes/claim' || path === '/api/hermes/complete')) {
+        if (new URL(request.url).origin !== env.APP_ORIGIN)
+          throw new HttpError(403, 'request_origin_denied');
+        return await hermesBridge(request, env.DB!);
+      }
       const identity = await sessionIdentity(request, env);
+      const mealRoute = /^\/api\/profiles\/([a-zA-Z0-9_-]{1,80})\/hermes-meals(?:\/pair)?$/.exec(path);
+      if (mealRoute && env.HERMES_MEALS_ENABLED === 'true')
+        return await hermesMeals(request, env.DB!, identity.accountId, mealRoute[1], env.APP_ORIGIN!);
       const syncRoute =
         /^\/api\/profiles\/[a-zA-Z0-9_-]{1,80}\/(sync|usage|attachments)$/.exec(
           path,

@@ -19,6 +19,7 @@ export function testDatabase() {
     '0006_attachment_restart.sql',
     '0007_sync_rate_limits.sql',
     '0008_xp_award_identity.sql',
+    '0009_hermes_meals.sql',
   ])
     sql.exec(
       readFileSync(new URL(`./migrations/${file}`, import.meta.url), 'utf8'),
