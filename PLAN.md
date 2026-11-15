@@ -2,7 +2,7 @@
 
 ## Current State
 
-- Ingredient availability: Pavel clarified that items on hand should rank first for Menus 1 and 2, unmarked items can supplement them, and explicit exclusions must be blocked everywhere. The updated interface stores both lists in the profile and shows missing ingredients per menu. Release verification is in progress.
+- Ingredient availability is live at source `09e4f842c1581748904e2e9f32336dd7d83b9b3a`. The profile stores both lists and each menu shows its shopping needs. The full Cloudflare gate passed, including 33 browser scenarios. Three menu scenarios passed on staging. A two-browser fixture verified both lists sync, excluded tofu never appears, and on-hand quinoa is not listed to buy. Production returned the intended marker and denied anonymous API requests. The signed-in profile showed both lists in the picker. Physical phone use remains unverified.
 
 - Preferred ingredients and dish details: option A is live at source `42abbfd575875d6f1fc562bafe0dc637f5eb2564`. The [plan](docs/PREFERRED_INGREDIENTS_PLAN.md) covers the synced preference list, two preference-aware menus, an independent discovery menu and dish details. The full release gate passed with 281 app tests, 107 backend tests, four storage scenarios and 33 browser scenarios. All three staging menu scenarios passed. Production returned the checked revision, denied anonymous protected requests and showed the ingredient picker and recipe sheet in the signed-in browser. Preference writes and two-device sync were verified with isolated fixtures. Physical phone testing remains open.
 
