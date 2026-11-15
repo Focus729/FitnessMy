@@ -64,13 +64,13 @@ it('syncs optional preferences and protects them from an older client', async ()
   const settings = projectCloudEntity('settings', {
     ...defaultSettings(), preferredIngredientIds: ['seed-chicken-breast'],
   });
-  const send = (preferencesAware: boolean, revision: number, payload: Record<string, unknown>) =>
+  const send = (version: string | undefined, revision: number, payload: Record<string, unknown>) =>
     call('sync', 'a', {
       method: 'POST',
       headers: {
         Origin: origin,
         'Content-Type': 'application/json',
-        ...(preferencesAware ? { [FOOD_PREFERENCES_HEADER]: '1' } : {}),
+        ...(version ? { [FOOD_PREFERENCES_HEADER]: version } : {}),
       },
       body: JSON.stringify({
         schemaVersion: 1,
@@ -79,12 +79,18 @@ it('syncs optional preferences and protects them from an older client', async ()
           id: 'singleton', expectedRevision: revision, payload }],
       }),
     });
-  expect((await send(true, 0, settings)).status).toBe(200);
+  expect((await send('1', 0, settings)).status).toBe(200);
   const oldPull = await call('sync');
   expect(oldPull.status).toBe(409);
   expect(await oldPull.json()).toEqual({ error: 'sync_client_update_required' });
-  expect((await send(false, 1, projectCloudEntity('settings', defaultSettings()))).status).toBe(409);
+  expect((await send(undefined, 1, projectCloudEntity('settings', defaultSettings()))).status).toBe(409);
   const response = await call('sync', 'a', { headers: { [FOOD_PREFERENCES_HEADER]: '1' } });
   expect(await response.json()).toMatchObject({ changes: [{ payload: { preferredIngredientIds: ['seed-chicken-breast'] } }] });
-  expect((await send(true, 1, { ...settings, preferredIngredientIds: [] })).status).toBe(200);
+  const lists = { ...settings, excludedIngredientIds: ['seed-tofu-firm'] };
+  expect((await send('2', 1, lists)).status).toBe(200);
+  expect((await call('sync', 'a', { headers: { [FOOD_PREFERENCES_HEADER]: '1' } })).status).toBe(409);
+  expect((await send('1', 2, settings)).status).toBe(409);
+  const current = await call('sync', 'a', { headers: { [FOOD_PREFERENCES_HEADER]: '2' } });
+  expect(await current.json()).toMatchObject({ changes: [{ payload: settings }, { payload: lists }] });
+  expect((await send('2', 2, { ...lists, excludedIngredientIds: [], preferredIngredientIds: [] })).status).toBe(200);
 });

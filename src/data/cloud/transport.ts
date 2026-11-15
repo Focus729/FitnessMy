@@ -57,8 +57,8 @@ export function createCloudRequest(fetcher: typeof fetch = fetch) {
       signal: AbortSignal.timeout(15000),
       headers:
         body === undefined
-          ? { Accept: 'application/json', [FOOD_PREFERENCES_HEADER]: '1' }
-          : { Accept: 'application/json', 'Content-Type': 'application/json', [FOOD_PREFERENCES_HEADER]: '1' },
+          ? { Accept: 'application/json', [FOOD_PREFERENCES_HEADER]: '2' }
+          : { Accept: 'application/json', 'Content-Type': 'application/json', [FOOD_PREFERENCES_HEADER]: '2' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {

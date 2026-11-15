@@ -1,4 +1,4 @@
-import { validPreferredIngredients } from '../domain/nutrition/food-preferences';
+import { validExcludedIngredients, validPreferredIngredients } from '../domain/nutrition/food-preferences';
 
 /** Runtime validation at the trust boundary, before any database writes. */
 type Check = (value: unknown) => boolean;
@@ -227,6 +227,7 @@ const settings = shape({
   firstDayOfWeek: choices(1, 7),
   mealSlots: array(shape({ id, name: text, order: nonnegative })),
   preferredIngredientIds: optional(validPreferredIngredients),
+  excludedIngredientIds: optional(validExcludedIngredients),
   targets: shape({
     mode: choices('calculated', 'manual'),
     kcal: positive,

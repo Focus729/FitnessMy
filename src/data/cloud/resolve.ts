@@ -84,14 +84,12 @@ export async function resolveConflict(
             ? { deletedAt: new Date(last.createdAt).toISOString() }
             : {}),
         };
-      if (
-        choice === 'local' && type === 'settings' &&
-        !Object.hasOwn(payload, 'preferredIngredientIds') &&
-        Object.hasOwn(version.conflict.payload, 'preferredIngredientIds')
-      ) {
-        // A settings edit queued before preferences existed did not request a reset.
-        payload.preferredIngredientIds = version.conflict.payload.preferredIngredientIds;
-      }
+      if (choice === 'local' && type === 'settings')
+        for (const field of ['preferredIngredientIds', 'excludedIngredientIds']) {
+          // Older queued settings edits have no instruction to reset these lists.
+          if (!Object.hasOwn(payload, field) && Object.hasOwn(version.conflict.payload, field))
+            payload[field] = version.conflict.payload[field];
+        }
       if (choice === 'merge') {
         if (!last || last.kind === 'delete')
           throw new Error('sync_local_version_missing');

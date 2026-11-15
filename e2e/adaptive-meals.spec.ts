@@ -76,11 +76,13 @@ test('desktop compares all menus; phone switches frames without overflow', async
   await expect(frames.nth(1)).toHaveAttribute('data-selected', 'true');
   await page.evaluate(() => document.fonts.ready);
   await page.screenshot({ path: info.outputPath('menu-desktop-ru-dark.png') });
-  await menu.getByText('Исключить ингредиенты', { exact: true }).click();
-  const ingredient = menu.getByLabel('Выбрать ингредиент');
-  await ingredient.selectOption('seed-chicken-breast');
-  await menu.getByRole('button', { name: 'Исключить', exact: true }).click();
-  await expect(menu.getByRole('button', { name: /Вернуть:/ })).toBeVisible();
+  await menu.getByRole('button', { name: /^Продукты для меню ·/ }).click();
+  const lists = page.getByRole('dialog', { name: 'Продукты для меню' });
+  await lists.getByRole('radio', { name: 'Исключить', exact: true }).click();
+  await lists.getByRole('searchbox').fill('куриная грудка');
+  await lists.getByRole('button', { name: /Куриная грудка/i }).first().click();
+  await lists.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  await expect(menu.getByRole('button', { name: /исключено 1/ })).toBeVisible();
   await expect(menu.locator('.menu-dish').filter({ hasText: /курица/i })).toHaveCount(0);
   await page.getByRole('button', { name: 'Настройки', exact: true }).click();
   await page.getByRole('radio', { name: 'English', exact: true }).click();
@@ -95,9 +97,9 @@ test('desktop compares all menus; phone switches frames without overflow', async
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
   await page.screenshot({ path: info.outputPath('menu-phone-en-light.png') });
-  const preferred = menu.getByRole('button', { name: 'Preferred ingredients · 0' });
+  const preferred = menu.getByRole('button', { name: /Menu ingredients · 0 on hand · 1 excluded/ });
   await preferred.click();
-  const picker = page.getByRole('dialog', { name: 'Preferred ingredients' });
+  const picker = page.getByRole('dialog', { name: 'Ingredients for menus' });
   await picker.getByRole('searchbox').fill('zzzz no ingredient');
   await expect(picker.getByText('No ingredients found.')).toBeVisible();
   await page.keyboard.press('Escape');

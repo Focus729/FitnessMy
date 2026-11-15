@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useRepos } from "@/data/repositories/context";
 import { useQuery } from "@/data/repositories/hooks";
 import {
+  ingredientKey,
   mealCandidates,
   recordedMealFamilies,
 } from "@/data/repositories/meal-candidates";
@@ -159,7 +160,6 @@ function AdaptiveMealContent({ date }: { date: string }) {
     readPreference(preferenceKey),
   );
   const [tomorrowMenu, setTomorrowMenu] = useState<string>();
-  const [ingredient, setIngredient] = useState("");
   const chooseMenu = (menu: DailyMenu) => {
     const value: Preference = {
       id: menu.id,
@@ -205,7 +205,16 @@ function AdaptiveMealContent({ date }: { date: string }) {
   );
   const catalog = catalogData?.meals;
   const preferredIds = data?.settings.preferredIngredientIds;
-  const preferred = useMemo(() => new Set(preferredIds), [preferredIds]);
+  const syncedExcluded = data?.settings.excludedIngredientIds;
+  const excluded = syncedExcluded ?? data?.excluded;
+  const preferred = useMemo(
+    () => new Set(preferredIds?.filter((id) => !excluded?.includes(id))),
+    [preferredIds, excluded],
+  );
+  const ingredientsByMeal = useMemo(
+    () => new Map(catalog?.map((meal) => [meal.id, meal.ingredients])),
+    [catalog],
+  );
 
   useEffect(() => {
     const check = () => setEvening(toLocalTime() >= "21:00");
@@ -222,7 +231,6 @@ function AdaptiveMealContent({ date }: { date: string }) {
     return () => controller.abort();
   }, [cloudId, date, today]);
 
-  const excluded = data?.excluded;
   const candidates = useMemo(
     () =>
       catalog?.filter(
@@ -419,24 +427,6 @@ function AdaptiveMealContent({ date }: { date: string }) {
         : best;
     }, undefined);
   const selected = favoriteMenu(plan.menus, preference) ?? plan.menus[0]?.id;
-  const ingredients = [
-    ...new Map(
-      catalog.flatMap((meal) =>
-        meal.ingredients.map((item) => [item.id, item] as const),
-      ),
-    ).values(),
-  ].sort((a, b) => a.name.localeCompare(b.name, data.settings.locale));
-  const setExcluded = (id: string, excluded: boolean) =>
-    pairing.run(async () => {
-      const saved = (await repos.meta.get<string[]>(exclusionsKey)) ?? [];
-      await repos.meta.set(
-        exclusionsKey,
-        excluded
-          ? [...new Set([...saved, id])]
-          : saved.filter((value) => value !== id),
-      );
-      setIngredient("");
-    });
   return (
     <>
       <div className="menu-budget">
@@ -452,12 +442,19 @@ function AdaptiveMealContent({ date }: { date: string }) {
         </p>
       </div>
       <Button onClick={() => setPreferencesOpen(true)}>
-        {t("adaptive.preferredButton", { count: preferred.size })}
+        {t("adaptive.preferredButton", {
+          available: preferred.size,
+          excluded: excluded?.length ?? 0,
+        })}
       </Button>
       {preferencesOpen && (
         <PreferredIngredientsSheet
           foods={catalogData.foods}
           selected={preferredIds ?? []}
+          excluded={excluded ?? []}
+          importLegacy={
+            syncedExcluded === undefined && data.excluded.length > 0
+          }
           locale={data.settings.locale}
           close={() => setPreferencesOpen(false)}
         />
@@ -483,6 +480,8 @@ function AdaptiveMealContent({ date }: { date: string }) {
           )}
           <MealComparison
             preferred={preferred}
+            ingredientsByMeal={ingredientsByMeal}
+            showShopping={preferredIds !== undefined}
             viewDish={viewDish}
             menus={plan.menus}
             selected={selected}
@@ -527,47 +526,6 @@ function AdaptiveMealContent({ date }: { date: string }) {
             {t("adaptive.reopen", { slot: slotName(slot) })}
           </Button>
         ))}
-      <details className="menu-preferences space-y-2">
-        <summary>{t("adaptive.exclusions")}</summary>
-        <p className="text-caption text-muted">
-          {t("adaptive.exclusionsHint")}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label={t("adaptive.ingredient")}
-            className="min-h-touch rounded-lg border border-hairline bg-surface px-2"
-            value={ingredient}
-            onChange={(event) => setIngredient(event.target.value)}
-          >
-            <option value="">{t("adaptive.ingredient")}</option>
-            {ingredients
-              .filter(({ id }) => !data.excluded.includes(id))
-              .map(({ id, name }) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-          </select>
-          <Button
-            disabled={!ingredient || pairing.busy}
-            onClick={() => void setExcluded(ingredient, true)}
-          >
-            {t("adaptive.exclude")}
-          </Button>
-        </div>
-        {data.excluded.map((id) => (
-          <Button
-            key={id}
-            disabled={pairing.busy}
-            onClick={() => void setExcluded(id, false)}
-          >
-            {t("adaptive.restore", {
-              ingredient:
-                ingredients.find((item) => item.id === id)?.name ?? id,
-            })}
-          </Button>
-        ))}
-      </details>
       {review ? (
         <div className="menu-review space-y-3">
           <p className="text-section">{t("adaptive.review")}</p>
@@ -603,6 +561,8 @@ function AdaptiveMealContent({ date }: { date: string }) {
           {next?.menus.length ? (
             <MealComparison
               preferred={preferred}
+              ingredientsByMeal={ingredientsByMeal}
+              showShopping={preferredIds !== undefined}
               viewDish={(slot, meal) => viewDish(slot, meal, true)}
               menus={next.menus}
               selected={
@@ -665,15 +625,21 @@ function AdaptiveMealContent({ date }: { date: string }) {
           title={draft.meal.name}
           onClose={() => !save.busy && setDraft(undefined)}
         >
-          {validPortion && <p className="tnum">
-            {t("adaptive.servingWeight", { grams: num(servingGrams) })} ·{" "}
-            {macro(sum(portionParts?.map((part) => part.nutrients) ?? []))}
-          </p>}
+          {validPortion && (
+            <p className="tnum">
+              {t("adaptive.servingWeight", { grams: num(servingGrams) })} ·{" "}
+              {macro(sum(portionParts?.map((part) => part.nutrients) ?? []))}
+            </p>
+          )}
           <p className="text-caption text-muted">{t("adaptive.order")}</p>
           <div className="mt-2">
             <p className="text-caption text-muted">{t("adaptive.portion")}</p>
-            <NumberField aria-label={t("adaptive.portion")} value={portionPercent}
-              suffix="%" onChange={setPortionPercent} />
+            <NumberField
+              aria-label={t("adaptive.portion")}
+              value={portionPercent}
+              suffix="%"
+              onChange={setPortionPercent}
+            />
           </div>
           <section className="menu-preferences space-y-2 my-3">
             <h3 className="text-section">{t("adaptive.ingredients")}</h3>
@@ -685,7 +651,20 @@ function AdaptiveMealContent({ date }: { date: string }) {
                       key={`${foodId}:${index}`}
                       className="flex justify-between gap-3 py-2"
                     >
-                      <span className="min-w-0 break-words">{name}</span>
+                      <span className="min-w-0 break-words">
+                        {name}
+                        {preferredIds !== undefined && (
+                          <span className="block text-caption text-muted">
+                            {t(
+                              excluded?.includes(ingredientKey(foodId))
+                                ? "adaptive.excluded"
+                                : preferred.has(ingredientKey(foodId))
+                                  ? "adaptive.available"
+                                  : "adaptive.canBuy",
+                            )}
+                          </span>
+                        )}
+                      </span>
                       <span className="tnum shrink-0">
                         {validPortion
                           ? smart(ingredientGrams(index, grams))

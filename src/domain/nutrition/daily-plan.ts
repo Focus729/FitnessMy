@@ -140,8 +140,8 @@ export function dailyPlan(
       0,
     );
     return Math.min(
-      0.26,
-      covered * 0.23 + (preferred.has(meal.mainIngredient) ? 0.12 : 0),
+      0.38,
+      covered * 0.3 + (preferred.has(meal.mainIngredient) ? 0.14 : 0),
     );
   };
   let cumulative = 0;

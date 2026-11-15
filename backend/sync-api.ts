@@ -10,16 +10,11 @@ import { consumeSyncRequest, SyncRateLimitError } from "./sync-rate-limit";
 import { profileStorageUsage } from "./storage-usage";
 import { FOOD_PREFERENCES_HEADER } from "../src/domain/nutrition/food-preferences";
 
-function requirePreferencesSupport(
-  request: Request,
-  changes: Awaited<ReturnType<typeof commitSyncBatch>>,
-) {
+function requirePreferencesSupport(version: string | null, payload: object) {
   if (
-    request.headers.get(FOOD_PREFERENCES_HEADER) !== "1" &&
-    changes.some(
-      ({ type, payload }) =>
-        type === "settings" && Object.hasOwn(payload, "preferredIngredientIds"),
-    )
+    version !== "2" &&
+    (Object.hasOwn(payload, "excludedIngredientIds") ||
+      (version !== "1" && Object.hasOwn(payload, "preferredIngredientIds")))
   ) {
     throw new HttpError(409, "sync_client_update_required");
   }
@@ -45,6 +40,7 @@ export async function syncApi(
     )
       throw new HttpError(405, "method_not_allowed");
     if (request.method === "POST") sameOrigin(request, origin);
+    const preferencesVersion = request.headers.get(FOOD_PREFERENCES_HEADER);
     await consumeSyncRequest(
       db,
       accountId,
@@ -61,7 +57,7 @@ export async function syncApi(
       const batch = await readJson(request, 256 * 1024);
       validateSyncBatch(batch);
       if (
-        request.headers.get(FOOD_PREFERENCES_HEADER) !== "1" &&
+        preferencesVersion !== "2" &&
         batch.mutations.some((mutation) => mutation.type === "settings")
       ) {
         const current = await db
@@ -70,11 +66,9 @@ export async function syncApi(
           )
           .bind(accountId, profile)
           .first<{ payload: string }>();
-        if (
-          current &&
-          Object.hasOwn(JSON.parse(current.payload), "preferredIngredientIds")
-        )
-          throw new HttpError(409, "sync_client_update_required");
+        if (current) requirePreferencesSupport(preferencesVersion, JSON.parse(current.payload));
+        for (const mutation of batch.mutations)
+          if (mutation.type === "settings") requirePreferencesSupport(preferencesVersion, mutation.payload);
       }
       const changes = await commitSyncBatch(db, accountId, profile!, batch);
       return json({ batchId: batch.batchId, changes });
@@ -105,7 +99,9 @@ export async function syncApi(
       integer("limit", 50),
       mode,
     );
-    requirePreferencesSupport(request, page.changes);
+    if (preferencesVersion !== "2")
+      for (const change of page.changes)
+        if (change.type === "settings") requirePreferencesSupport(preferencesVersion, change.payload);
     return json(page);
   } catch (error) {
     if (error instanceof SyncRateLimitError)

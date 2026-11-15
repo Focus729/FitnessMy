@@ -18,6 +18,8 @@ export function MealComparison({
   preview,
   viewDish,
   preferred,
+  ingredientsByMeal,
+  showShopping,
   skip,
   busy,
 }: {
@@ -30,6 +32,8 @@ export function MealComparison({
   preview?: (slot: string, meal: MealSelection) => void;
   viewDish: (slot: string, meal: MealSelection) => void;
   preferred: ReadonlySet<string>;
+  ingredientsByMeal: ReadonlyMap<string, { id: string; name: string }[]>;
+  showShopping: boolean;
   skip?: (slot: string) => void;
   busy?: boolean;
 }) {
@@ -60,17 +64,16 @@ export function MealComparison({
         {menus.map((menu, index) => {
           const title = t("adaptive.menu", { number: index + 1 });
           const active = selected === menu.id;
-          const matches = new Set(
+          const ingredients = new Map(
             menu.meals.flatMap(({ selection }) =>
-              Object.entries(selection?.preferenceWeights ?? {})
-                .filter(
-                  ([id, fraction]) =>
-                    preferred.has(id) &&
-                    (fraction >= 0.08 || id === selection?.mainIngredient),
-                )
-                .map(([id]) => id),
+              (selection
+                ? (ingredientsByMeal.get(selection.id) ?? [])
+                : []
+              ).map(({ id, name }) => [id, name] as const),
             ),
-          ).size;
+          );
+          const missing = [...ingredients].filter(([id]) => !preferred.has(id));
+          const matches = ingredients.size - missing.length;
           return (
             <article
               key={menu.id}
@@ -106,6 +109,24 @@ export function MealComparison({
                   {t("adaptive.projected", { values: macro(menu.projected) })}
                 </p>
               </header>
+              {showShopping &&
+                ingredients.size > 0 &&
+                (missing.length ? (
+                  <details className="menu-preferences text-caption mt-2">
+                    <summary>
+                      {t("adaptive.toBuy", { count: missing.length })}
+                    </summary>
+                    <ul className="list-disc pl-4">
+                      {missing.map(([id, name]) => (
+                        <li key={id}>{name}</li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : (
+                  <p className="text-caption menu-balance mt-2">
+                    {t("adaptive.allAvailable")}
+                  </p>
+                ))}
               {menus.length > 1 && (
                 <Button
                   className="menu-select"

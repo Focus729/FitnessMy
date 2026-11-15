@@ -45,3 +45,9 @@ Use the [interactive interface preview](audit/preferred-ingredients-preview.html
 Product counts, expiry dates, prices, pantry depletion, daily shopping export and generated recipe drafts are deferred. The first release uses the existing deployment and local menu computation without a new service or dependency.
 
 The profile field is optional. The updated sync client advertises support with a request header. Older builds can continue syncing profiles without the field. Once a profile saves preferences, the Worker rejects legacy requests that would read the new settings payload or overwrite it. Installing the in-app update resumes synchronization with the existing cursor. A deliberate reset saves an empty list.
+
+### Ingredient availability clarification
+
+The menu ingredient sheet has separate On hand and Exclude lists. An ingredient can belong to only one list. Unmarked ingredients remain eligible and appear under To buy for each proposed menu after the user saves their list. Menu 1 and Menu 2 give on-hand foods priority within the existing nutrition and variety scoring. Menu 3 uses general catalog scoring. All menus, including tomorrow, apply exclusions before scoring. Dish details identify on-hand and purchasable ingredients individually. There is no inventory quantity or depletion tracking.
+
+The existing on-hand list carries forward. Previous device exclusions stay active until the profile has an explicit exclusion list. Saving the displayed exclusions promotes them into the profile. Once the profile list exists it is authoritative, so removing a shared exclusion works on all updated devices. Sync capability version 2 protects the new field from older clients.

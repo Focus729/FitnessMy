@@ -100,6 +100,7 @@ export interface Settings {
   firstDayOfWeek: 1 | 7;
   mealSlots: MealSlot[];
   preferredIngredientIds?: string[];
+  excludedIngredientIds?: string[];
   targets: NutritionTargets;
   gamificationEnabled: boolean;
   showSteps: boolean;

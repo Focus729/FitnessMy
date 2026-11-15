@@ -2,6 +2,8 @@
 
 ## Current State
 
+- Ingredient availability: Pavel clarified that items on hand should rank first for Menus 1 and 2, unmarked items can supplement them, and explicit exclusions must be blocked everywhere. The updated interface stores both lists in the profile and shows missing ingredients per menu. Release verification is in progress.
+
 - Preferred ingredients and dish details: option A is live at source `42abbfd575875d6f1fc562bafe0dc637f5eb2564`. The [plan](docs/PREFERRED_INGREDIENTS_PLAN.md) covers the synced preference list, two preference-aware menus, an independent discovery menu and dish details. The full release gate passed with 281 app tests, 107 backend tests, four storage scenarios and 33 browser scenarios. All three staging menu scenarios passed. Production returned the checked revision, denied anonymous protected requests and showed the ingredient picker and recipe sheet in the signed-in browser. Preference writes and two-device sync were verified with isolated fixtures. Physical phone testing remains open.
 
 - Menu variety and interface redesign: A, Yellow HUD, is live at source `3dc923a517a8e82f779cbcb824476c9a1d43c291`. The [approved plan](docs/CYBERPUNK_REDESIGN_PLAN.md) is implemented. The full release gate passed with 280 app tests, 106 backend tests, four storage tests and 33 browser scenarios. Staging passed the three menu scenarios against the published assets with isolated test profiles. On 2026-11-14, the signed-in production browser showed three alternatives and a real Hermes recommendation. Production rejected anonymous profile and bridge requests. Physical phone verification for this increment remains open.

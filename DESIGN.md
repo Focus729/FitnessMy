@@ -71,4 +71,6 @@ See the [implementation plan](docs/CYBERPUNK_REDESIGN_PLAN.md) for the sequence 
 
 ## Preferred ingredients and dish details
 
+The product picker separates ingredients on hand from exclusions. Unmarked ingredients can supplement every menu and are listed under To buy. Both lists are profile settings. A dish sheet displays each ingredient's status alongside its quantity.
+
 Pavel approved option A: keep Yellow HUD and place ingredient preferences above the daily menu comparison. Menus 1 and 2 use those preferences as a ranking signal. Menu 3 uses the regular nutrition score and may suggest new ingredients. All three use the same nutrition targets, catalog and exclusions. Open a dish by its title or portion action to see ingredients and preparation steps in a sheet. The first release uses a persistent profile list. See the [options and acceptance checks](docs/PREFERRED_INGREDIENTS_PLAN.md) and the [interface preview](docs/audit/preferred-ingredients-preview.html).

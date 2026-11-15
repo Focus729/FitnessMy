@@ -77,17 +77,27 @@ test('Hermes ranks verified menus and a phone entry replans the desktop diary', 
     const pcMenu = pc.locator('.adaptive-meals');
     await expect(pcMenu.getByRole('article')).toHaveCount(3);
     await expect(pcMenu.getByText('Завтрак', { exact: true })).toHaveCount(3);
-    await menu.getByRole('button', { name: 'Предпочтительные продукты · 0' }).click();
+    await menu.getByRole('button', { name: /^Продукты для меню ·/ }).click();
     const picker = mobile.getByRole('dialog');
     await picker.getByRole('searchbox').fill('киноа');
     await picker.getByRole('button', { name: /киноа/i }).click();
+    await picker.getByRole('radio', { name: 'Исключить', exact: true }).click();
+    await picker.getByRole('searchbox').fill('тофу');
+    await picker.getByRole('button', { name: /тофу/i }).first().click();
     await picker.getByRole('button', { name: 'Сохранить', exact: true }).click();
-    await expect(menu.getByRole('button', { name: 'Предпочтительные продукты · 1' })).toBeVisible();
+    const savedLists = 'Продукты для меню · в наличии 1 · исключено 1';
+    await expect(menu.getByRole('button', { name: savedLists })).toBeVisible();
     await expect.poll(() => fixture.sql.prepare(
       "SELECT json_extract(payload, '$.preferredIngredientIds[0]') AS ingredient FROM sync_entities WHERE entity_type='settings'",
     ).get()?.ingredient).toBe('seed-quinoa');
     await pc.reload();
-    await expect(pcMenu.getByRole('button', { name: 'Предпочтительные продукты · 1' })).toBeVisible();
+    await expect(pcMenu.getByRole('button', { name: savedLists })).toBeVisible();
+    await expect(pcMenu.locator('.menu-dish').filter({ hasText: /тофу/i })).toHaveCount(0);
+    const toBuy = pcMenu.locator('.menu-frame').first().getByText(/^Докупить ·/);
+    await toBuy.click();
+    const shopping = pcMenu.locator('.menu-frame').first().locator('details ul');
+    await expect(shopping).toBeVisible();
+    await expect(shopping).not.toContainText(/киноа|тофу/i);
     await menu.getByRole('button', { name: 'Посмотреть порцию' }).first().click();
     await mobile.getByRole('dialog').getByRole('button', { name: 'Записать в дневник' }).click();
     await expect(menu.getByText('Порция записана в дневник.')).toBeVisible();
