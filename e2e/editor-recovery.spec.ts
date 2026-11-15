@@ -32,6 +32,7 @@ for (const kind of ['foods', 'recipes', 'habits'] as const) {
         .first()
         .click();
       await page.getByLabel('Вес готового блюда', { exact: true }).fill('150');
+      await page.getByRole('textbox', { name: 'Как приготовить' }).fill('Промыть крупу.\nСварить до готовности.');
     } else {
       await page.goto('/#/body?section=habits');
       await page.getByRole('button', { name: 'Новая привычка', exact: true }).click();
@@ -84,6 +85,10 @@ for (const kind of ['foods', 'recipes', 'habits'] as const) {
     );
     expect(count).toBe(1);
     if (kind === 'recipes') {
+      await page.getByRole('button', { name: name }).click();
+      await expect(page.getByRole('textbox', { name: 'Как приготовить' }))
+        .toHaveValue('Промыть крупу.\nСварить до готовности.');
+      await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Удалить', exact: true }).click();
       await expect(page.getByText(name, { exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: 'Вернуть', exact: true }).click();

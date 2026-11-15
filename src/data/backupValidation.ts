@@ -1,3 +1,5 @@
+import { validPreferredIngredients } from '../domain/nutrition/food-preferences';
+
 /** Runtime validation at the trust boundary, before any database writes. */
 type Check = (value: unknown) => boolean;
 const object = (v: unknown): v is Record<string, unknown> =>
@@ -105,6 +107,7 @@ const fields: Record<string, Record<string, Check>> = {
     components: array(component),
     yieldGrams: positive,
     servings: positive,
+    steps: optional(array(text)),
     useCount: nonnegative,
     isFavorite: bool,
   },
@@ -223,6 +226,7 @@ const settings = shape({
   units: choices('metric', 'imperial'),
   firstDayOfWeek: choices(1, 7),
   mealSlots: array(shape({ id, name: text, order: nonnegative })),
+  preferredIngredientIds: optional(validPreferredIngredients),
   targets: shape({
     mode: choices('calculated', 'manual'),
     kcal: positive,

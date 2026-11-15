@@ -99,6 +99,7 @@ export interface Settings {
   units: 'metric' | 'imperial';
   firstDayOfWeek: 1 | 7;
   mealSlots: MealSlot[];
+  preferredIngredientIds?: string[];
   targets: NutritionTargets;
   gamificationEnabled: boolean;
   showSteps: boolean;

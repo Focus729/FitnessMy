@@ -1,9 +1,29 @@
-import type { Database } from './db';
-import { HttpError, json, sameOrigin } from './http';
-import { readJson } from './profiles';
-import { commitSyncBatch, pullSyncChanges } from './sync-store';
-import { consumeSyncRequest, SyncRateLimitError } from './sync-rate-limit';
-import { profileStorageUsage } from './storage-usage';
+import type { Database } from "./db";
+import { HttpError, json, sameOrigin } from "./http";
+import { readJson } from "./profiles";
+import {
+  commitSyncBatch,
+  pullSyncChanges,
+  validateSyncBatch,
+} from "./sync-store";
+import { consumeSyncRequest, SyncRateLimitError } from "./sync-rate-limit";
+import { profileStorageUsage } from "./storage-usage";
+import { FOOD_PREFERENCES_HEADER } from "../src/domain/nutrition/food-preferences";
+
+function requirePreferencesSupport(
+  request: Request,
+  changes: Awaited<ReturnType<typeof commitSyncBatch>>,
+) {
+  if (
+    request.headers.get(FOOD_PREFERENCES_HEADER) !== "1" &&
+    changes.some(
+      ({ type, payload }) =>
+        type === "settings" && Object.hasOwn(payload, "preferredIngredientIds"),
+    )
+  ) {
+    throw new HttpError(409, "sync_client_update_required");
+  }
+}
 
 /** Caller must derive accountId from sessionIdentity, never from request input. */
 export async function syncApi(
@@ -17,73 +37,90 @@ export async function syncApi(
     const match = /^\/api\/profiles\/([a-zA-Z0-9_-]{1,80})\/(sync|usage)$/.exec(
       url.pathname,
     );
-    if (!match) throw new HttpError(404, 'not_found');
+    if (!match) throw new HttpError(404, "not_found");
     const [, profile, action] = match;
     if (
-      request.method !== 'GET' &&
-      !(request.method === 'POST' && action === 'sync')
+      request.method !== "GET" &&
+      !(request.method === "POST" && action === "sync")
     )
-      throw new HttpError(405, 'method_not_allowed');
-    if (request.method === 'POST') sameOrigin(request, origin);
+      throw new HttpError(405, "method_not_allowed");
+    if (request.method === "POST") sameOrigin(request, origin);
     await consumeSyncRequest(
       db,
       accountId,
-      request.method === 'GET' ? 'read' : 'write',
+      request.method === "GET" ? "read" : "write",
     );
-    if (action === 'usage') {
-      if (url.search) throw new HttpError(400, 'invalid_sync_query');
+    if (action === "usage") {
+      if (url.search) throw new HttpError(400, "invalid_sync_query");
       return json({
         usage: await profileStorageUsage(db, accountId, profile!),
       });
     }
-    if (request.method === 'POST') {
-      if (url.search) throw new HttpError(400, 'invalid_sync_query');
+    if (request.method === "POST") {
+      if (url.search) throw new HttpError(400, "invalid_sync_query");
       const batch = await readJson(request, 256 * 1024);
+      validateSyncBatch(batch);
+      if (
+        request.headers.get(FOOD_PREFERENCES_HEADER) !== "1" &&
+        batch.mutations.some((mutation) => mutation.type === "settings")
+      ) {
+        const current = await db
+          .prepare(
+            "SELECT payload FROM sync_entities WHERE account_id=? AND profile_id=? AND entity_type='settings' AND entity_id='singleton'",
+          )
+          .bind(accountId, profile)
+          .first<{ payload: string }>();
+        if (
+          current &&
+          Object.hasOwn(JSON.parse(current.payload), "preferredIngredientIds")
+        )
+          throw new HttpError(409, "sync_client_update_required");
+      }
       const changes = await commitSyncBatch(db, accountId, profile!, batch);
       return json({ batchId: batch.batchId, changes });
     }
     for (const key of url.searchParams.keys()) {
       if (
-        !['after', 'watermark', 'limit', 'mode'].includes(key) ||
+        !["after", "watermark", "limit", "mode"].includes(key) ||
         url.searchParams.getAll(key).length !== 1
       )
-        throw new HttpError(400, 'invalid_sync_query');
+        throw new HttpError(400, "invalid_sync_query");
     }
     const integer = (key: string, fallback?: number) => {
       const raw = url.searchParams.get(key);
       if (raw === null) return fallback;
       if (!/^(0|[1-9]\d*)$/.test(raw) || !Number.isSafeInteger(Number(raw)))
-        throw new HttpError(400, 'invalid_sync_query');
+        throw new HttpError(400, "invalid_sync_query");
       return Number(raw);
     };
-    const mode = url.searchParams.get('mode') ?? 'changes';
-    if (mode !== 'changes' && mode !== 'snapshot')
-      throw new HttpError(400, 'invalid_sync_query');
-    return json(
-      await pullSyncChanges(
-        db,
-        accountId,
-        profile!,
-        integer('after', 0),
-        integer('watermark'),
-        integer('limit', 50),
-        mode,
-      ),
+    const mode = url.searchParams.get("mode") ?? "changes";
+    if (mode !== "changes" && mode !== "snapshot")
+      throw new HttpError(400, "invalid_sync_query");
+    const page = await pullSyncChanges(
+      db,
+      accountId,
+      profile!,
+      integer("after", 0),
+      integer("watermark"),
+      integer("limit", 50),
+      mode,
     );
+    requirePreferencesSupport(request, page.changes);
+    return json(page);
   } catch (error) {
     if (error instanceof SyncRateLimitError)
       return json({ error: error.code }, 429, {
-        'Retry-After': String(error.retryAfter),
+        "Retry-After": String(error.retryAfter),
       });
     if (error instanceof HttpError)
       return json(
         { error: error.code },
         error.status,
-        error.code === 'sync_revision_conflict' ||
-          error.code === 'sync_xp_award_conflict'
-          ? { 'X-Sync-Error': error.code }
+        error.code === "sync_revision_conflict" ||
+          error.code === "sync_xp_award_conflict"
+          ? { "X-Sync-Error": error.code }
           : {},
       );
-    return json({ error: 'sync_temporarily_unavailable' }, 503);
+    return json({ error: "sync_temporarily_unavailable" }, 503);
   }
 }

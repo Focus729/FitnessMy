@@ -23,9 +23,17 @@ test('daily suggestions save only after confirmation and replan remaining slots'
   await expect(suggestions).toHaveCount(4);
   const remaining = menu.getByText(/Остаток на день/);
   const before = await remaining.innerText();
-  await suggestions.first().click();
+  const dish = menu.getByRole('article').locator('.menu-dish').first();
+  const dishName = await dish.innerText();
+  await dish.click();
   const dialog = page.getByRole('dialog');
+  await expect(dialog).toHaveAccessibleName(dishName);
+  await expect(dialog.getByRole('heading', { name: 'Ингредиенты' })).toBeVisible();
+  await expect(dialog.locator('ol li')).toHaveCount(2);
+  const firstAmount = dialog.locator('ul li .tnum').first();
+  const initialAmount = Number.parseFloat(await firstAmount.innerText());
   await dialog.getByLabel('Размер порции').fill('75');
+  expect(Number.parseFloat(await firstAmount.innerText())).toBe(Math.round(initialAmount * 0.75));
   await expect(dialog.getByRole('button', { name: 'Записать в дневник' })).toBeEnabled();
   expect(await remaining.innerText()).toBe(before);
   await dialog.getByRole('button', { name: 'Записать в дневник' }).click();
@@ -87,4 +95,18 @@ test('desktop compares all menus; phone switches frames without overflow', async
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
   await page.screenshot({ path: info.outputPath('menu-phone-en-light.png') });
+  const preferred = menu.getByRole('button', { name: 'Preferred ingredients · 0' });
+  await preferred.click();
+  const picker = page.getByRole('dialog', { name: 'Preferred ingredients' });
+  await picker.getByRole('searchbox').fill('zzzz no ingredient');
+  await expect(picker.getByText('No ingredients found.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(preferred).toBeFocused();
+  await menu.getByRole('article').locator('.menu-dish').first().click();
+  const recipe = page.getByRole('dialog');
+  await expect(recipe.getByRole('heading', { name: 'Preparation' })).toBeVisible();
+  await expect(recipe.locator('ol li')).toHaveCount(2);
+  await expect(recipe.getByRole('heading', { name: 'Ingredients', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: info.outputPath('recipe-phone-en-light.png') });
 });

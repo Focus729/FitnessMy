@@ -302,6 +302,18 @@ body {
   font-weight: 700;
 }
 
+.menu-meal .menu-dish-link {
+  display: block;
+  margin: 0;
+  padding: 6px 0;
+  min-height: 44px;
+  text-align: start;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
 .menu-notice {
   white-space: pre-wrap;
 }

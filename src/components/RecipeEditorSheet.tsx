@@ -36,11 +36,13 @@ export function RecipeEditorSheet({
   const [components, setComponents] = useState<ComponentRow[]>([]);
   const [yieldGrams, setYieldGrams] = useState<number | ''>('');
   const [servings, setServings] = useState<number | ''>(4);
+  const [steps, setSteps] = useState('');
   const dirty =
     name !== (recipe?.name ?? '') ||
     JSON.stringify(components) !== JSON.stringify(recipe?.components ?? []) ||
     yieldGrams !== (recipe?.yieldGrams ?? '') ||
-    servings !== (recipe?.servings ?? 4);
+    servings !== (recipe?.servings ?? 4) ||
+    steps !== (recipe?.steps ?? []).join('\n');
   const valid =
     (!recipeId || Boolean(recipe)) &&
     Boolean(name.trim()) &&
@@ -54,6 +56,7 @@ export function RecipeEditorSheet({
     setComponents(recipe?.components ?? []);
     setYieldGrams(recipe?.yieldGrams ?? '');
     setServings(recipe?.servings ?? 4);
+    setSteps((recipe?.steps ?? []).join('\n'));
   }, [recipe, open]);
 
   const byId = new Map(foods.map((f) => [f.id, f]));
@@ -72,6 +75,7 @@ export function RecipeEditorSheet({
       components,
       yieldGrams: yieldGrams === '' ? math.rawGrams : yieldGrams,
       servings: servings === '' ? 1 : servings,
+      steps: steps.split('\n').map((step) => step.trim()).filter(Boolean),
       isFavorite: recipe?.isFavorite ?? false,
       useCount: recipe?.useCount ?? 0,
     };
@@ -137,6 +141,14 @@ export function RecipeEditorSheet({
         </div>
       </div>
       <p className="mt-1 text-caption text-muted">{t('food.recipeYieldHint')}</p>
+
+      <label className="mt-4 block">
+        <span>{t('adaptive.preparation')}</span>
+        <textarea className="mt-1 block w-full rounded-lg border border-hairline bg-surface p-2"
+          rows={4} maxLength={12000} value={steps}
+          onChange={(event) => setSteps(event.target.value)}
+          placeholder={t('adaptive.oneStepPerLine')} />
+      </label>
 
       <dl className="tnum mt-4 space-y-1 text-caption text-muted">
         <div className="flex justify-between">

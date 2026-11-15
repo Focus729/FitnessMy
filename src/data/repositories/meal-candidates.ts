@@ -3,6 +3,7 @@ import type { MealCandidate } from "@/domain/nutrition/daily-plan";
 import { macroKeys, mealFamily } from "@/domain/nutrition/daily-plan";
 import { computeDish, computeRecipe } from "@/domain/nutrition/recipe";
 import { scale } from "@/domain/nutrition/nutrients";
+import { starterMealSteps } from "./starter-meal-steps";
 
 const mains = ["lunch", "dinner"];
 const starters = [
@@ -178,7 +179,7 @@ const starters = [
   ],
 ] as const;
 
-function ingredientKey(id: string) {
+export function ingredientKey(id: string) {
   return id.startsWith("seed-")
     ? id
         .replace(
@@ -204,12 +205,15 @@ const mainByStarter: Record<string, string> = {
 export type CatalogMeal = MealCandidate & {
   ingredients: { id: string; name: string }[];
   family: string;
+  detail: {
+    ingredients: { foodId: string; name: string; grams: number }[];
+    steps: string[];
+    yieldGrams?: number;
+    recipeId?: string;
+  };
 };
 
-export async function mealCandidates(
-  repos: Repositories,
-  locale: "ru" | "en",
-): Promise<CatalogMeal[]> {
+export async function mealCandidates(repos: Repositories, locale: "ru" | "en") {
   const [foods, dishes, recipes] = await Promise.all([
     repos.foods.all(),
     repos.dishes.all(),
@@ -227,14 +231,42 @@ export async function mealCandidates(
       .map((food) => [food.id, food]),
   );
   const result: CatalogMeal[] = [];
-  const describe = (ids: string[], main: string) => ({
-    family: mealFamily(ids.map(ingredientKey)),
-    mainIngredient: ingredientKey(main),
-    ingredients: ids.map((id) => ({
-      id: ingredientKey(id),
-      name: byId.get(id)?.nameI18n?.[locale] ?? byId.get(id)?.name ?? id,
-    })),
-  });
+  const describe = (
+    components: { foodId: string; grams: number }[],
+    main: string,
+    steps: string[] = [],
+    recipe?: { id: string; yieldGrams: number },
+  ) => {
+    const ingredients = components.map(({ foodId, grams }) => ({
+      foodId,
+      grams,
+      name:
+        byId.get(foodId)?.nameI18n?.[locale] ??
+        byId.get(foodId)?.name ??
+        foodId,
+    }));
+    const total = ingredients.reduce((sum, item) => sum + item.grams, 0);
+    const weights = new Map<string, number>();
+    for (const item of ingredients) {
+      const key = ingredientKey(item.foodId);
+      weights.set(key, (weights.get(key) ?? 0) + item.grams / total);
+    }
+    return {
+      family: mealFamily([...weights.keys()]),
+      mainIngredient: ingredientKey(main),
+      preferenceWeights: Object.fromEntries(weights),
+      ingredients: ingredients.map(({ foodId, name }) => ({
+        id: ingredientKey(foodId),
+        name,
+      })),
+      detail: {
+        ingredients,
+        steps,
+        yieldGrams: recipe?.yieldGrams,
+        recipeId: recipe?.id,
+      },
+    };
+  };
   for (const [id, ru, en, slots, ingredients] of starters) {
     const parts = ingredients.flatMap(([food, grams]) => {
       const row = byId.get(`seed-${food}`);
@@ -256,8 +288,9 @@ export async function mealCandidates(
         slots: [...slots],
         parts,
         ...describe(
-          parts.map(({ refId }) => refId),
+          parts.map(({ refId, grams }) => ({ foodId: refId, grams })),
           mainByStarter[id] ?? parts[0]!.refId,
+          starterMealSteps(id, locale),
         ),
       });
   }
@@ -275,17 +308,16 @@ export async function mealCandidates(
         ? part
         : best,
     );
-    const ingredients = describe(
-      components.map(({ foodId }) => foodId),
-      main.foodId,
-    );
     if ("yieldGrams" in item) {
       const math = computeRecipe(components, item.yieldGrams, item.servings);
       if (Number.isFinite(math.servingGrams) && math.servingGrams > 0)
         result.push({
           id: item.id,
           name: item.name,
-          ...ingredients,
+          ...describe(components, main.foodId, item.steps, {
+            id: item.id,
+            yieldGrams: math.yieldGrams,
+          }),
           parts: [
             {
               kind: "recipe",
@@ -300,7 +332,7 @@ export async function mealCandidates(
       result.push({
         id: item.id,
         name: item.name,
-        ...ingredients,
+        ...describe(components, main.foodId),
         parts: [
           {
             kind: "dish",
@@ -312,7 +344,7 @@ export async function mealCandidates(
       });
     }
   }
-  return result;
+  return { meals: result, foods: [...byId.values()] };
 }
 
 export function recordedMealFamilies(

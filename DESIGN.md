@@ -68,3 +68,7 @@ On desktop, the left rail anchors navigation. Show the three menu frames side by
 Use short, user-triggered motion. Proposed timings are 90–120 ms for button press, 160–220 ms for view and menu selection, and 180–240 ms for sheets and save feedback. Use opacity and small transforms with stable space for content. Animate changed meal rows when recomputation finishes. Provide static equivalents for reduced motion and keep feedback visible without animation.
 
 See the [implementation plan](docs/CYBERPUNK_REDESIGN_PLAN.md) for the sequence and acceptance checks. The existing training-first layout continues to govern Today.
+
+## Preferred ingredients and dish details
+
+Pavel approved option A: keep Yellow HUD and place ingredient preferences above the daily menu comparison. Menus 1 and 2 use those preferences as a ranking signal. Menu 3 uses the regular nutrition score and may suggest new ingredients. All three use the same nutrition targets, catalog and exclusions. Open a dish by its title or portion action to see ingredients and preparation steps in a sheet. The first release uses a persistent profile list. See the [options and acceptance checks](docs/PREFERRED_INGREDIENTS_PLAN.md) and the [interface preview](docs/audit/preferred-ingredients-preview.html).

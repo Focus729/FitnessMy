@@ -3,6 +3,27 @@ import type { DiaryEntry } from '../model';
 import { dailyPlan, type MealCandidate } from './daily-plan';
 import { readHermesRanking } from '@/components/AdaptiveMeals';
 
+test('preferences favor the first two menus while the discovery menu can use other ingredients', () => {
+  const slot = slots.slice(1, 2);
+  const basis = candidates[1]!;
+  const makeMeal = (id: string, preferred = false, calories = 650): MealCandidate => ({
+    ...basis,
+    id,
+    family: id,
+    mainIngredient: preferred ? 'preferred' : id,
+    preferenceWeights: preferred ? { preferred: 0.55 } : {},
+    parts: [{ ...basis.parts[0]!, nutrients: { kcal: calories, proteinG: 32, fatG: 12, carbG: 48 } }],
+  });
+  const target = basis.parts[0]!.nutrients;
+  const catalog = [makeMeal('a'), makeMeal('b'), makeMeal('lower-fit', true, 1700),
+    makeMeal('preferred-one', true), makeMeal('preferred-two', true)];
+  const ranked = dailyPlan(target, slot, [], catalog, [], new Map(), new Set(['preferred']));
+  expect(ranked.menus.map((menu) => menu.meals[0]?.selection?.id)).toEqual([
+    'preferred-one', 'preferred-two', 'a',
+  ]);
+  expect(dailyPlan(target, slot, [], catalog, []).menus[0]?.meals[0]?.selection?.id).toBe('a');
+});
+
 const targets = { kcal: 2100, proteinG: 140, fatG: 70, carbG: 225 };
 const slots = ['breakfast', 'lunch', 'dinner'].map((id, order) => ({ id, name: id, order }));
 const candidates = [260, 650].map((kcal): MealCandidate => ({

@@ -2,6 +2,8 @@
 
 ## Current State
 
+- Preferred ingredients and dish details: Pavel approved option A and the picker above the menus. The [plan](docs/PREFERRED_INGREDIENTS_PLAN.md) covers a profile-level list, two preference-aware menus, one discovery menu and a dish sheet with quantities and steps. Implementation is local and undergoing release verification.
+
 - Menu variety and interface redesign: A, Yellow HUD, is live at source `3dc923a517a8e82f779cbcb824476c9a1d43c291`. The [approved plan](docs/CYBERPUNK_REDESIGN_PLAN.md) is implemented. The full release gate passed with 280 app tests, 106 backend tests, four storage tests and 33 browser scenarios. Staging passed the three menu scenarios against the published assets with isolated test profiles. On 2026-11-14, the signed-in production browser showed three alternatives and a real Hermes recommendation. Production rejected anonymous profile and bridge requests. Physical phone verification for this increment remains open.
 
 - Adaptive meal recommendations (2026-11-12): [direct Hermes integration](docs/ADAPTIVE_MEAL_PLAN.md) is live in production `8e40bb2`. Pavel authorized the scoped data flow for his production profile. The encrypted bridge key and Windows logon task were installed. Staging passed the full synthetic D1 → bridge → Hermes → D1 cycle, and the signed-in production browser displayed the resulting Hermes menu. [Bridge setup](docs/HERMES_MEAL_BRIDGE.md).

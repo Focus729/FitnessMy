@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FitnessMy — предпочтения и рецепты</title>
+<style>
+  @font-face{font-family:Unbounded;src:url(../../public/fonts/unbounded-700-cyrillic.woff2);font-weight:700;unicode-range:U+0400-045F}
+  @font-face{font-family:Unbounded;src:url(../../public/fonts/unbounded-700-latin.woff2);font-weight:700;unicode-range:U+0000-00FF}
+  *{box-sizing:border-box}
+  :root{color-scheme:dark;background:#090d17;color:#f4f6f9;font:16px/1.55 system-ui,sans-serif}
+  body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 85% 0,#211b45,transparent 70%),radial-gradient(ellipse at 0 0,#102e40,transparent 66%)}
+  main{width:min(100% - 28px,1060px);margin:auto;padding:24px 0 40px}
+  h1,h2{font:700 clamp(17px,3vw,25px)/1.45 Unbounded,system-ui,sans-serif;margin:0 0 12px}
+  h2{font-size:16px}
+  p{margin:0 0 10px}
+  .muted{color:#aebcc8}
+  .accent{color:#62e2ec}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .panel,dialog{background:linear-gradient(140deg,#142431,#10121f);border:1px solid #3a4d66;border-radius:4px 18px 5px 13px;padding:16px}
+  .nav,.budget{margin-bottom:12px}
+  .budget{border-left:3px solid #62e2ec}
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .dish{display:block;text-align:left;width:100%;margin-top:8px;background:#172735}
+  button,input{font:inherit;color:inherit;min-height:44px;border:1px solid #506480;border-radius:4px 9px;background:#182435;padding:8px 11px}
+  button{cursor:pointer}
+  button:is([aria-pressed=true],.primary){background:linear-gradient(115deg,#fff268,#ffb43e);color:#191507;border-color:#ffb43e;font-weight:650}
+  button:focus-visible,input:focus-visible{outline:2px solid #62e2ec;outline-offset:2px}
+  input{width:100%;margin:10px 0}
+  dialog{width:min(560px,calc(100% - 24px));max-height:85dvh;color:inherit}
+  dialog::backdrop{background:#070a14b8}
+  li{margin-bottom:5px}
+  [hidden]{display:none!important}
+  #menuTabs{display:none;margin-bottom:12px}
+  @media(max-width:720px){.cards{grid-template-columns:1fr}#menuTabs{display:flex}.cards article:not(.active){display:none}dialog{margin:auto auto 8px}}
+</style>
+<main>
+  <h1>FitnessMy · Меню на день</h1>
+  <p class="muted">Макет на примерах. Показывает расположение настроек и карточку блюда.</p>
+  <div class="row nav" role="group" aria-label="Варианты интерфейса">
+    <button id="variantA" aria-pressed="true">A · Над меню</button>
+    <button id="variantB" aria-pressed="false">B · В разделе «Еда»</button>
+  </div>
+  <section id="settingsPage" class="panel" hidden>
+    <h2>Еда → Предпочтения</h2>
+    <p class="muted">Любимые продукты учитываются в меню 1 и 2.</p>
+    <div id="settingsProducts" class="row"></div>
+    <div class="row"><button id="settingsEdit" class="primary">Изменить продукты</button><button id="back">К меню</button></div>
+  </section>
+  <div id="menus">
+    <section class="panel budget">
+      <p class="accent">Остаток на день · 1 340 ккал</p>
+      <div class="row"><button id="preferences">Предпочтительные продукты · 2</button><span class="muted" id="chips"></span></div>
+    </section>
+    <div id="menuTabs" class="row" role="group" aria-label="Меню">
+      <button aria-pressed="true">Меню 1</button><button aria-pressed="false">Меню 2</button><button aria-pressed="false">Меню 3</button>
+    </div>
+    <div class="cards">
+      <article class="panel active"><h2>Меню 1</h2><p class="accent match"></p><button class="dish" data-recipe="chicken">Обед · Курица с рисом и брокколи</button><button class="dish" data-recipe="tuna">Ужин · Салат с тунцом и нутом</button></article>
+      <article class="panel"><h2>Меню 2</h2><p class="accent match"></p><button class="dish" data-recipe="soup">Обед · Томатный суп с рисом</button><button class="dish" data-recipe="salmon">Ужин · Лосось с киноа</button></article>
+      <article class="panel"><h2>Меню 3</h2><p class="accent">Попробовать новое</p><button class="dish" data-recipe="tofu">Обед · Тофу с капустой</button><button class="dish" data-recipe="lentils">Ужин · Чечевица с перцем</button></article>
+    </div>
+  </div>
+</main>
+<dialog id="picker" aria-labelledby="pickerTitle">
+  <h2 id="pickerTitle">Предпочтительные продукты</h2>
+  <label for="search">Найти продукт</label><input id="search" type="search" placeholder="Например, рис">
+  <div id="products" class="row"></div>
+  <p class="muted" id="noMatches" hidden>Продукты не найдены.</p>
+  <p id="pickerHint" class="muted">Список влияет на подбор меню 1 и 2.</p>
+  <form method="dialog"><button class="primary">Готово</button></form>
+</dialog>
+<dialog id="recipe" aria-labelledby="recipeTitle">
+  <h2 id="recipeTitle"></h2><p id="recipePortion" class="accent"></p>
+  <strong>Ингредиенты</strong><ul id="ingredients"></ul>
+  <strong>Как приготовить</strong><ol id="steps"></ol>
+  <form method="dialog"><button class="primary">К меню</button></form>
+</dialog>
+<script>
+  const get = id => document.getElementById(id);
+  const foods = ['Куриная грудка','Рис','Брокколи','Тофу','Нут','Лосось','Томаты'];
+  const preferred = new Set(foods.slice(0,2));
+  const recipes = {
+    chicken: ['Курица с рисом и брокколи','480 г · 500 ккал',['Готовая куриная грудка — 160 г','Отварной рис — 200 г','Отварная брокколи — 120 г'],['Нарежь готовую курицу.','Разогрей рис и брокколи.','Выложи ингредиенты в тарелку.']],
+    soup: ['Томатный суп с рисом','350 г',['Протёртые томаты — 200 г','Отварной рис — 90 г','Вода — 60 мл'],['Смешай томаты с водой и доведи до кипения.','Добавь готовый рис и прогрей суп.']],
+    tofu: ['Тофу с капустой','290 г',['Тофу — 170 г','Капуста — 120 г'],['Нарежь тофу кубиками.','Нашинкуй капусту.','Обжарь тофу на антипригарной сковороде и подай с капустой.']],
+    tuna: ['Салат с тунцом и нутом','360 г',['Тунец без жидкости — 130 г','Отварной нут — 130 г','Огурец — 100 г'],['Нарежь огурец.','Смешай его с готовым нутом и тунцом.']],
+    salmon: ['Лосось с киноа','320 г',['Запечённый лосось — 140 г','Отварная киноа — 180 г'],['Разогрей готовые лосось и киноа.','Выложи рыбу поверх киноа.']],
+    lentils: ['Чечевица с перцем','310 г',['Отварная чечевица — 210 г','Сладкий перец — 100 г'],['Нарежь перец.','Прогрей готовую чечевицу и добавь нарезанный перец.']]
+  };
+  let variant = 'A';
+  function render() {
+    const chosen = [...preferred];
+    get('preferences').textContent = variant === 'A' ? 'Предпочтительные продукты · ' + chosen.length : 'Еда → Предпочтения · ' + chosen.length;
+    get('chips').textContent = variant === 'A' ? chosen.join(' · ') : '';
+    get('settingsProducts').textContent = chosen.join(' · ') || 'Список пуст';
+    const matches = [[foods[0],foods[1],foods[2],foods[4]],[foods[1],foods[5],foods[6]]];
+    document.querySelectorAll('.match').forEach((node,index) => {
+      const count = matches[index].filter(food => preferred.has(food)).length;
+      node.textContent = count ? 'Совпадений с предпочтениями: ' + count : 'Без совпадений';
+    });
+  }
+  function renderPicker() {
+    const visible = foods.filter(food => food.toLowerCase().includes(get('search').value.trim().toLowerCase()));
+    get('products').replaceChildren(...visible.map(food => {
+      const button = document.createElement('button');
+      button.textContent = food;
+      button.setAttribute('aria-pressed', preferred.has(food));
+      button.onclick = () => {
+        if (preferred.has(food)) preferred.delete(food);
+        else preferred.add(food);
+        button.setAttribute('aria-pressed', preferred.has(food));
+        render();
+      };
+      return button;
+    }));
+    get('noMatches').hidden = visible.length > 0;
+  }
+  function openPicker() {
+    get('search').value = '';
+    renderPicker();
+    get('picker').showModal();
+  }
+  function showSettings(show) {
+    get('settingsPage').hidden = !show;
+    get('menus').hidden = show;
+  }
+  get('preferences').onclick = () => variant === 'A' ? openPicker() : showSettings(true);
+  get('settingsEdit').onclick = openPicker;
+  get('back').onclick = () => {showSettings(false);get('preferences').focus();};
+  get('search').oninput = renderPicker;
+  ['A','B'].forEach(option => {
+    get('variant' + option).onclick = () => {
+      variant = option;
+      get('variantA').setAttribute('aria-pressed', option === 'A');
+      get('variantB').setAttribute('aria-pressed', option === 'B');
+      showSettings(false);
+      render();
+    };
+  });
+  const tabs = [...get('menuTabs').querySelectorAll('button')];
+  const cards = [...document.querySelectorAll('.cards article')];
+  tabs.forEach((button,index) => button.onclick = () => {
+    tabs.forEach((tab,i) => tab.setAttribute('aria-pressed', i === index));
+    cards.forEach((card,i) => card.classList.toggle('active', i === index));
+  });
+  document.querySelectorAll('[data-recipe]').forEach(button => button.onclick = () => {
+    const [title,portion,ingredients,steps] = recipes[button.dataset.recipe];
+    get('recipeTitle').textContent = title;
+    get('recipePortion').textContent = portion;
+    for (const [id,items] of [['ingredients',ingredients],['steps',steps]]) {
+      get(id).replaceChildren(...items.map(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        return li;
+      }));
+    }
+    get('recipe').showModal();
+  });
+  render();
+</script>
+</html>

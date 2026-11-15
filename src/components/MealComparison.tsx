@@ -16,6 +16,8 @@ export function MealComparison({
   slotName,
   macro,
   preview,
+  viewDish,
+  preferred,
   skip,
   busy,
 }: {
@@ -26,6 +28,8 @@ export function MealComparison({
   slotName: (slot: MealSlot) => string;
   macro: (value: Macros) => string;
   preview?: (slot: string, meal: MealSelection) => void;
+  viewDish: (slot: string, meal: MealSelection) => void;
+  preferred: ReadonlySet<string>;
   skip?: (slot: string) => void;
   busy?: boolean;
 }) {
@@ -56,6 +60,17 @@ export function MealComparison({
         {menus.map((menu, index) => {
           const title = t("adaptive.menu", { number: index + 1 });
           const active = selected === menu.id;
+          const matches = new Set(
+            menu.meals.flatMap(({ selection }) =>
+              Object.entries(selection?.preferenceWeights ?? {})
+                .filter(
+                  ([id, fraction]) =>
+                    preferred.has(id) &&
+                    (fraction >= 0.08 || id === selection?.mainIngredient),
+                )
+                .map(([id]) => id),
+            ),
+          ).size;
           return (
             <article
               key={menu.id}
@@ -66,6 +81,20 @@ export function MealComparison({
             >
               <header className="menu-frame-header">
                 <h3>{title}</h3>
+                {index === 2 ? (
+                  <p className="menu-balance">{t("adaptive.discovery")}</p>
+                ) : (
+                  preferred.size > 0 && (
+                    <p className="text-caption text-muted">
+                      {t(
+                        matches
+                          ? "adaptive.preferredMatches"
+                          : "adaptive.noPreferredMatches",
+                        { count: matches },
+                      )}
+                    </p>
+                  )
+                )}
                 {recommended === menu.id && (
                   <span className="menu-badge">{t("adaptive.hermesPick")}</span>
                 )}
@@ -94,7 +123,13 @@ export function MealComparison({
                     </p>
                     {selection ? (
                       <>
-                        <p className="menu-dish">{selection.name}</p>
+                        <button
+                          type="button"
+                          className="menu-dish menu-dish-link"
+                          onClick={() => viewDish(slot.id, selection)}
+                        >
+                          {selection.name}
+                        </button>
                         <p className="tnum text-caption text-muted">
                           {selection.parts.reduce(
                             (n, part) => n + part.grams,

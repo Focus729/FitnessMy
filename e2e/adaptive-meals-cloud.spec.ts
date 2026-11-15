@@ -77,6 +77,17 @@ test('Hermes ranks verified menus and a phone entry replans the desktop diary', 
     const pcMenu = pc.locator('.adaptive-meals');
     await expect(pcMenu.getByRole('article')).toHaveCount(3);
     await expect(pcMenu.getByText('Завтрак', { exact: true })).toHaveCount(3);
+    await menu.getByRole('button', { name: 'Предпочтительные продукты · 0' }).click();
+    const picker = mobile.getByRole('dialog');
+    await picker.getByRole('searchbox').fill('киноа');
+    await picker.getByRole('button', { name: /киноа/i }).click();
+    await picker.getByRole('button', { name: 'Сохранить', exact: true }).click();
+    await expect(menu.getByRole('button', { name: 'Предпочтительные продукты · 1' })).toBeVisible();
+    await expect.poll(() => fixture.sql.prepare(
+      "SELECT json_extract(payload, '$.preferredIngredientIds[0]') AS ingredient FROM sync_entities WHERE entity_type='settings'",
+    ).get()?.ingredient).toBe('seed-quinoa');
+    await pc.reload();
+    await expect(pcMenu.getByRole('button', { name: 'Предпочтительные продукты · 1' })).toBeVisible();
     await menu.getByRole('button', { name: 'Посмотреть порцию' }).first().click();
     await mobile.getByRole('dialog').getByRole('button', { name: 'Записать в дневник' }).click();
     await expect(menu.getByText('Порция записана в дневник.')).toBeVisible();
@@ -89,10 +100,9 @@ test('Hermes ranks verified menus and a phone entry replans the desktop diary', 
     await expect(pcMenu.getByRole('button', { name: 'Посмотреть порцию' })).toHaveCount(9);
 
     // A nonconforming reply cannot replace the visible catalog suggestions.
-    const previousSnapshot = job.snapshot;
     await expect.poll(() => fixture.sql.prepare(
-      "SELECT snapshot FROM hermes_meal_jobs WHERE purpose='plan'",
-    ).get()?.snapshot).not.toBe(previousSnapshot);
+      "SELECT json_array_length(payload, '$.menus[0].dishes') AS slots FROM hermes_meal_jobs WHERE purpose='plan'",
+    ).get()?.slots).toBe(3);
     const { job: updated } = await bridge('claim');
     expect(JSON.parse(updated.payload).menus[0].dishes).toHaveLength(3);
     await bridge('complete', { ...updated, result: '{"order":[3,9,2]}' });

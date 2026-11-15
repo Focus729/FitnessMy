@@ -731,15 +731,17 @@ function makeSettingsRepo(db: LentaDB): SettingsRepo {
       return row ? { ...defaultSettings(), ...row } : defaultSettings();
     },
     async update(patch) {
-      const current = await this.get();
-      const next: Settings = {
-        ...current,
-        ...patch,
-        id: 'singleton',
-        updatedAt: nowIso(),
-      };
-      await db.settings.put(next);
-      return next;
+      return db.transaction('rw', db.settings, async () => {
+        const current = await this.get();
+        const next: Settings = {
+          ...current,
+          ...patch,
+          id: 'singleton',
+          updatedAt: nowIso(),
+        };
+        await db.settings.put(next);
+        return next;
+      });
     },
   };
 }

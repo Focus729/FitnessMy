@@ -9,6 +9,7 @@ export interface MealCandidate {
   name: string;
   family?: string;
   mainIngredient?: string;
+  preferenceWeights?: Readonly<Record<string, number>>;
   slots?: string[];
   parts: {
     kind: "food" | "dish" | "recipe";
@@ -61,6 +62,7 @@ export function dailyPlan(
   candidates: MealCandidate[],
   skipped: string[],
   previous: ReadonlyMap<string, string> = new Map(),
+  preferred: ReadonlySet<string> = new Set(),
 ) {
   const actual = sumEntries(entries);
   const remaining = difference(targets, actual);
@@ -130,6 +132,18 @@ export function dailyPlan(
     );
   };
   const menus: DailyMenu[] = [];
+  const preferenceFit = (meal: MealSelection) => {
+    if (lighter || !preferred.size) return 0;
+    const covered = Object.entries(meal.preferenceWeights ?? {}).reduce(
+      (total, [id, weight]) =>
+        preferred.has(id) && weight >= 0.08 ? total + weight : total,
+      0,
+    );
+    return Math.min(
+      0.26,
+      covered * 0.23 + (preferred.has(meal.mainIngredient) ? 0.12 : 0),
+    );
+  };
   let cumulative = 0;
   const pools = open.map((slot) => {
     const share = weight(slot) / totalWeight;
@@ -147,12 +161,31 @@ export function dailyPlan(
           a.id.localeCompare(b.id, "en"),
       );
     const shortlist = families(eligible).slice(0, 14);
-    const allowed = new Set(shortlist.map((choice) => choice.id));
+    const preferredShortlist =
+      preferred.size && !lighter
+        ? families(
+            [...eligible].sort(
+              (a, b) =>
+                fit(a.nutrients, share) -
+                preferenceFit(a) -
+                fit(b.nutrients, share) +
+                preferenceFit(b),
+            ),
+          ).slice(0, 14)
+        : shortlist;
+    const optionsFor = (shortlist: MealSelection[]) => {
+      const allowed = new Set(shortlist.map((choice) => choice.id));
+      return eligible.filter((choice) => allowed.has(choice.id));
+    };
     return {
       share,
       cumulative,
       shortlist,
-      options: eligible.filter((choice) => allowed.has(choice.id)),
+      options: optionsFor(shortlist),
+      preferredOptions:
+        preferredShortlist === shortlist
+          ? undefined
+          : optionsFor(preferredShortlist),
     };
   });
   const available = pools.filter(({ options }) => options.length).length;
@@ -162,11 +195,12 @@ export function dailyPlan(
   // different families before later meal slots have been considered.
   for (let rank = 0; rank < 3 && available; rank++) {
     let beam: MenuPath[] = [{ picks: [], totals: ZERO, penalty: 0, score: 0 }];
-    pools.forEach(({ share, cumulative, options }, index) => {
+    pools.forEach(({ share, cumulative, options, preferredOptions }, index) => {
       const stillAvailable = pools
         .slice(index + 1)
         .filter((pool) => pool.options.length).length;
-      const choices = options.length ? options : [undefined];
+      const ranked = rank < 2 ? (preferredOptions ?? options) : options;
+      const choices = ranked.length ? ranked : [undefined];
       const paths = beam.flatMap((path) =>
         choices.flatMap((choice) => {
           const picks = [...path.picks, choice];
@@ -207,7 +241,8 @@ export function dailyPlan(
               ? 0
               : 0.2 * fit(choice.nutrients, share) +
                 (repeated ? 0.35 : 0) +
-                (yesterday ? 0.24 : 0));
+                (yesterday ? 0.24 : 0) -
+                (rank < 2 ? preferenceFit(choice) : 0));
           const overlap = differences.reduce(
             (n, value) => n + Math.max(0, requiredDifferences - value),
             0,
@@ -225,7 +260,8 @@ export function dailyPlan(
             );
           const diversityPenalty = lighter
             ? 0
-            : (sameMain ? 0.26 : 0) + (sameDish ? 0.16 : 0);
+            : (sameMain ? (rank < 2 && choice && preferred.has(choice.mainIngredient) ? 0.12 : 0.26) : 0) +
+              (sameDish ? 0.16 : 0);
           return [
             {
               picks,

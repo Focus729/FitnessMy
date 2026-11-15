@@ -1,4 +1,5 @@
 import type { SyncTransport } from './sync-once';
+import { FOOD_PREFERENCES_HEADER } from '../../domain/nutrition/food-preferences';
 import type { RemoteChange, RemotePage } from './receive';
 import { validateCloudWireEntity } from './schema';
 import { MAX_BATCH_MUTATIONS } from './limits';
@@ -56,8 +57,8 @@ export function createCloudRequest(fetcher: typeof fetch = fetch) {
       signal: AbortSignal.timeout(15000),
       headers:
         body === undefined
-          ? { Accept: 'application/json' }
-          : { Accept: 'application/json', 'Content-Type': 'application/json' },
+          ? { Accept: 'application/json', [FOOD_PREFERENCES_HEADER]: '1' }
+          : { Accept: 'application/json', 'Content-Type': 'application/json', [FOOD_PREFERENCES_HEADER]: '1' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {

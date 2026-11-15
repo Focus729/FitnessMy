@@ -1,4 +1,5 @@
 import { SEED_VERSION } from '../seed/version';
+import { validPreferredIngredients } from '../../domain/nutrition/food-preferences';
 
 /** Shared cloud boundary. Backup validation is intentionally separate. */
 type Rule = (value: unknown) => boolean;
@@ -365,6 +366,7 @@ const settingsFields: Fields = {
   updatedAt: stamp,
   units: one('metric', 'imperial'),
   firstDayOfWeek: one(1, 7),
+  preferredIngredientIds: opt(validPreferredIngredients),
   mealSlots: list(
     shape({
       id,

@@ -17,11 +17,13 @@ import {
 } from "@/domain/nutrition/daily-plan";
 import { mul, sum } from "@/domain/nutrition/nutrients";
 import { addDays, toLocalTime } from "@/lib/date";
-import { num } from "@/lib/format";
+import { num, smart } from "@/lib/format";
 import { Button, NumberField, Sheet } from "@/design-system/primitives";
 import { useSaveAction } from "@/app/useSaveAction";
 import { useToday } from "@/app/hooks";
 import { MealComparison } from "./MealComparison";
+import { PreferredIngredientsSheet } from "./PreferredIngredientsSheet";
+import { RecipeEditorSheet } from "./RecipeEditorSheet";
 
 type Selection = MealSelection;
 const skipKey = (date: string) => `adaptive-meals.skipped.${date}`;
@@ -136,7 +138,13 @@ function AdaptiveMealContent({ date }: { date: string }) {
   const [manualReview, setManualReview] = useState("");
   const [paired, setPaired] = useState<boolean>();
   const [token, setToken] = useState("");
-  const [draft, setDraft] = useState<{ slot: string; meal: Selection }>();
+  const [draft, setDraft] = useState<{
+    slot: string;
+    meal: Selection;
+    viewOnly?: boolean;
+  }>();
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [editRecipe, setEditRecipe] = useState<string>();
   const [portionPercent, setPortionPercent] = useState<number | "">(100);
   const save = useSaveAction();
   const balance = useRef<HTMLParagraphElement>(null);
@@ -191,10 +199,13 @@ function AdaptiveMealContent({ date }: { date: string }) {
     [date],
   );
   const locale = data?.settings.locale;
-  const catalog = useQuery(
+  const catalogData = useQuery(
     (r) => (locale ? mealCandidates(r, locale) : Promise.resolve(undefined)),
     [locale],
   );
+  const catalog = catalogData?.meals;
+  const preferredIds = data?.settings.preferredIngredientIds;
+  const preferred = useMemo(() => new Set(preferredIds), [preferredIds]);
 
   useEffect(() => {
     const check = () => setEvening(toLocalTime() >= "21:00");
@@ -229,9 +240,10 @@ function AdaptiveMealContent({ date }: { date: string }) {
             candidates,
             data.skipped,
             recordedMealFamilies(candidates, data.yesterday),
+            preferred,
           )
         : undefined,
-    [data, candidates],
+    [data, candidates, preferred],
   );
   const review =
     !!plan &&
@@ -249,9 +261,10 @@ function AdaptiveMealContent({ date }: { date: string }) {
             candidates,
             data.skippedTomorrow,
             recordedMealFamilies(candidates, data.entries),
+            preferred,
           )
         : undefined,
-    [data, review, candidates],
+    [data, review, candidates, preferred],
   );
   const macro = (value: Macros) =>
     [value.kcal, value.proteinG, value.fatG, value.carbG]
@@ -321,7 +334,7 @@ function AdaptiveMealContent({ date }: { date: string }) {
   );
   const ranking = plan && readHermesRanking(aiPlan?.text, plan.menus);
 
-  if (!data || !plan || !candidates || !catalog)
+  if (!data || !plan || !candidates || !catalog || !catalogData)
     return <p role="status">{t("common.loading")}</p>;
 
   const setSkipped = (slot: string, skip: boolean) =>
@@ -360,6 +373,22 @@ function AdaptiveMealContent({ date }: { date: string }) {
     typeof portionPercent === "number" &&
     portionPercent >= 25 &&
     portionPercent <= 200;
+  const sourceDish = draft && catalog.find((meal) => meal.id === draft.meal.id);
+  const dishDetail = sourceDish?.detail;
+  const servingGrams =
+    portionParts?.reduce((total, part) => total + part.grams, 0) ?? 0;
+  const compoundPart = sourceDish?.parts[0];
+  const weightBasis =
+    dishDetail?.yieldGrams ??
+    (compoundPart?.kind !== "food" ? compoundPart?.grams : undefined);
+  const ingredientGrams = (index: number, grams: number) =>
+    weightBasis
+      ? (grams * servingGrams) / weightBasis
+      : (portionParts?.[index]?.grams ?? grams);
+  const viewDish = (slot: string, meal: Selection, viewOnly = false) => {
+    setPortionPercent(100);
+    setDraft({ slot, meal, viewOnly });
+  };
   const baseline = review
     ? dailyPlan(
         data.settings.targets,
@@ -422,6 +451,17 @@ function AdaptiveMealContent({ date }: { date: string }) {
           {t("adaptive.remaining", { values: macro(plan.remaining) })}
         </p>
       </div>
+      <Button onClick={() => setPreferencesOpen(true)}>
+        {t("adaptive.preferredButton", { count: preferred.size })}
+      </Button>
+      {preferencesOpen && (
+        <PreferredIngredientsSheet
+          foods={catalogData.foods}
+          selected={preferredIds ?? []}
+          locale={data.settings.locale}
+          close={() => setPreferencesOpen(false)}
+        />
+      )}
       {save.state === "saved" && !draft && (
         <p role="status" className="menu-notice menu-saved">
           {t("adaptive.saved")}
@@ -442,6 +482,8 @@ function AdaptiveMealContent({ date }: { date: string }) {
             </p>
           )}
           <MealComparison
+            preferred={preferred}
+            viewDish={viewDish}
             menus={plan.menus}
             selected={selected}
             recommended={ranking?.recommended}
@@ -449,10 +491,7 @@ function AdaptiveMealContent({ date }: { date: string }) {
             slotName={slotName}
             macro={macro}
             busy={pairing.busy}
-            preview={(slot, meal) => {
-              setPortionPercent(100);
-              setDraft({ slot, meal });
-            }}
+            preview={viewDish}
             skip={(slot) => void setSkipped(slot, true)}
           />
         </>
@@ -563,6 +602,8 @@ function AdaptiveMealContent({ date }: { date: string }) {
           <p className="text-section">{t("adaptive.tomorrow")}</p>
           {next?.menus.length ? (
             <MealComparison
+              preferred={preferred}
+              viewDish={(slot, meal) => viewDish(slot, meal, true)}
               menus={next.menus}
               selected={
                 next.menus.find((menu) => menu.id === tomorrowMenu)?.id ??
@@ -621,45 +662,108 @@ function AdaptiveMealContent({ date }: { date: string }) {
       {draft && (
         <Sheet
           open
-          title={t("adaptive.preview")}
+          title={draft.meal.name}
           onClose={() => !save.busy && setDraft(undefined)}
         >
-          <p>
-            {draft.meal.name} ·{" "}
+          {validPortion && <p className="tnum">
+            {t("adaptive.servingWeight", { grams: num(servingGrams) })} ·{" "}
             {macro(sum(portionParts?.map((part) => part.nutrients) ?? []))}
-          </p>
-          <NumberField
-            aria-label={t("adaptive.portion")}
-            value={portionPercent}
-            suffix="%"
-            onChange={setPortionPercent}
-          />
-          {!candidate && <p role="alert">{t("adaptive.changed")}</p>}
-          <Button
-            variant="primary"
-            disabled={save.busy || !candidate || !validPortion}
-            onClick={() =>
-              void save.run(async () => {
-                if (!candidate || !portionParts || !validPortion) return;
-                await repos.diary.addBatch(
-                  portionParts.map((part) => ({
-                    ...part,
-                    date,
-                    time: toLocalTime(),
-                    mealSlotId: draft.slot,
-                    inputMethod: "plan",
-                  })),
-                );
-                setDraft(undefined);
-              })
-            }
-          >
-            {t("adaptive.record")}
-          </Button>
+          </p>}
+          <p className="text-caption text-muted">{t("adaptive.order")}</p>
+          <div className="mt-2">
+            <p className="text-caption text-muted">{t("adaptive.portion")}</p>
+            <NumberField aria-label={t("adaptive.portion")} value={portionPercent}
+              suffix="%" onChange={setPortionPercent} />
+          </div>
+          <section className="menu-preferences space-y-2 my-3">
+            <h3 className="text-section">{t("adaptive.ingredients")}</h3>
+            {dishDetail ? (
+              <ul className="divide-y divide-hairline">
+                {dishDetail.ingredients.map(
+                  ({ foodId, name, grams }, index) => (
+                    <li
+                      key={`${foodId}:${index}`}
+                      className="flex justify-between gap-3 py-2"
+                    >
+                      <span className="min-w-0 break-words">{name}</span>
+                      <span className="tnum shrink-0">
+                        {validPortion
+                          ? smart(ingredientGrams(index, grams))
+                          : "–"}{" "}
+                        {t("units.g")}
+                      </span>
+                    </li>
+                  ),
+                )}
+              </ul>
+            ) : (
+              <p>{t("adaptive.changed")}</p>
+            )}
+            {dishDetail?.yieldGrams && (
+              <p className="text-caption text-muted">
+                {t("adaptive.yieldHint")}
+              </p>
+            )}
+            <h3 className="text-section">{t("adaptive.preparation")}</h3>
+            {dishDetail?.steps.length ? (
+              <ol className="list-decimal space-y-2 pl-6">
+                {dishDetail.steps.map((step, index) => (
+                  <li className="break-words" key={index}>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="text-muted">{t("adaptive.noPreparation")}</p>
+            )}
+            {dishDetail?.recipeId && (
+              <Button
+                onClick={() => {
+                  setEditRecipe(dishDetail.recipeId);
+                  setDraft(undefined);
+                }}
+              >
+                {t("adaptive.editPreparation")}
+              </Button>
+            )}
+          </section>
+          {!candidate && !draft.viewOnly && (
+            <p role="alert">{t("adaptive.changed")}</p>
+          )}
+          {!draft.viewOnly && (
+            <Button
+              variant="primary"
+              disabled={save.busy || !candidate || !validPortion}
+              onClick={() =>
+                void save.run(async () => {
+                  if (!candidate || !portionParts || !validPortion) return;
+                  await repos.diary.addBatch(
+                    portionParts.map((part) => ({
+                      ...part,
+                      date,
+                      time: toLocalTime(),
+                      mealSlotId: draft.slot,
+                      inputMethod: "plan",
+                    })),
+                  );
+                  setDraft(undefined);
+                })
+              }
+            >
+              {t("adaptive.record")}
+            </Button>
+          )}
           {save.state === "error" && (
             <p role="alert">{t("errors.saveFailed")}</p>
           )}
         </Sheet>
+      )}
+      {editRecipe && (
+        <RecipeEditorSheet
+          open
+          recipeId={editRecipe}
+          onClose={() => setEditRecipe(undefined)}
+        />
       )}
     </>
   );

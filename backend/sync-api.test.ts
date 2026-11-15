@@ -1,6 +1,9 @@
 import { beforeEach, afterEach, expect, it } from 'vitest';
 import { testDatabase } from './test-database';
 import { syncApi } from './sync-api';
+import { defaultSettings } from '../src/data/defaults';
+import { projectCloudEntity } from '../src/data/cloud/schema';
+import { FOOD_PREFERENCES_HEADER } from '../src/domain/nutrition/food-preferences';
 let fixture: ReturnType<typeof testDatabase>;
 const origin = 'https://fixture.invalid';
 beforeEach(() => {
@@ -55,4 +58,33 @@ it('returns a bounded retry hint when the account budget is exhausted', async ()
   expect(response.status).toBe(429);
   expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
   expect(Number(response.headers.get('Retry-After'))).toBeLessThanOrEqual(60);
+});
+
+it('syncs optional preferences and protects them from an older client', async () => {
+  const settings = projectCloudEntity('settings', {
+    ...defaultSettings(), preferredIngredientIds: ['seed-chicken-breast'],
+  });
+  const send = (preferencesAware: boolean, revision: number, payload: Record<string, unknown>) =>
+    call('sync', 'a', {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json',
+        ...(preferencesAware ? { [FOOD_PREFERENCES_HEADER]: '1' } : {}),
+      },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        batchId: `settings-batch-${revision}`,
+        mutations: [{ operationId: `settings-op-${revision}`, type: 'settings',
+          id: 'singleton', expectedRevision: revision, payload }],
+      }),
+    });
+  expect((await send(true, 0, settings)).status).toBe(200);
+  const oldPull = await call('sync');
+  expect(oldPull.status).toBe(409);
+  expect(await oldPull.json()).toEqual({ error: 'sync_client_update_required' });
+  expect((await send(false, 1, projectCloudEntity('settings', defaultSettings()))).status).toBe(409);
+  const response = await call('sync', 'a', { headers: { [FOOD_PREFERENCES_HEADER]: '1' } });
+  expect(await response.json()).toMatchObject({ changes: [{ payload: { preferredIngredientIds: ['seed-chicken-breast'] } }] });
+  expect((await send(true, 1, { ...settings, preferredIngredientIds: [] })).status).toBe(200);
 });
